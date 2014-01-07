@@ -102,16 +102,19 @@ static void setup();
 static void sigchld(int unused);
 static void spawn(const struct Arg arg);
 static void start();
-//static void swap();
 static void swap_master();
 static void switch_mode();
 static void tile();
 static void update_current();
 
-static void submap(struct Arg arg);
 static int grabkeyboard();
 static void releasekeyboard();
 static void message(char *message);
+static void message_wait(char *message, int t);
+
+static void submap(struct Arg arg);
+static void stickysubmap(struct Arg arg);
+static int keyismod(KeySym keysym);
 
 // Include configuration file (need struct key)
 #include "config.h"
@@ -274,66 +277,6 @@ unsigned long getcolor(const char* color) {
   return c.pixel;
 }
 
-int grabkeyboard() {
-  int i;
-  for (i = 0; i < 100; i++) {
-    if (XGrabKeyboard(dis, root, True, GrabModeAsync, GrabModeAsync, CurrentTime) == GrabSuccess)
-      return 1;
-    usleep(1000);
-  }
-  return 0;
-}
-
-void releasekeyboard() {
-  XUngrabKeyboard(dis, CurrentTime);  
-}
-
-void submap(struct Arg arg) {
-  int i;
-  XEvent e;
-  XKeyEvent ke;
-  KeySym keysym;
-
-  if (!grabkeyboard())
-    return;
-
-  for (i = 0; i < 1000; i++) {
-    XNextEvent(dis, &e);
-    if (e.type == KeyPress) {
-      ke = e.xkey;
-      keysym = XLookupKeysym(&ke, 0);
-      
-      if (keysym != XK_Shift_L &&
-	  keysym != XK_Shift_R &&
-	  keysym != XK_Control_L &&
-	  keysym != XK_Control_R &&
-	  keysym != XK_Meta_L &&
-	  keysym != XK_Meta_R
-	  )
-	goto gotkey;
-    }
-  }
-
-  message("No key found in 1000 events... Umm");
-  goto end;
-
- gotkey:
-
-  //  keysym = XKeycodeToKeysym(dis, ke.keycode, 0);
-  keysym = XLookupKeysym(&ke, 0);
-  for (i = 0; arg.map[i].function != NULL; i++) {
-    if(arg.map[i].keysym == keysym && arg.map[i].mod == ke.state) {
-      arg.map[i].function(arg.map[i].arg);
-      goto end;
-    }
-  }
-
-  message("No key shortcut maped to that key");
-
- end:
-  releasekeyboard();
-}
-
 void grabkeys() {
   int i;
   KeyCode code;
@@ -355,7 +298,7 @@ void increase() {
 void keypress(XEvent *e) {
   int i;
   XKeyEvent ke = e->xkey;
-  KeySym keysym = XLookupKeysym(&ke, 0);//XKeycodeToKeysym(dis, ke.keycode, 0);
+  KeySym keysym = XLookupKeysym(&ke, 0);
 
   for (i = 0; keys[i].function != NULL; i++) {
     if(keys[i].keysym == keysym && keys[i].mod == ke.state) {
@@ -714,6 +657,121 @@ void message(char *message) {
   struct Arg arg;
   arg.com = command;
   spawn(arg);
+}
+
+void message_wait(char *message, int t) {
+  char* command[] = {"showmessage", NULL, "-w", "-t", NULL, NULL};
+
+  command[1] = message;
+  command[4] = malloc(sizeof(char) * 5);
+  sprintf(command[4], "%i", t);
+
+  struct Arg arg;
+  arg.com = command;
+  spawn(arg);
+}
+
+int grabkeyboard() {
+  int i;
+  for (i = 0; i < 100; i++) {
+    if (XGrabKeyboard(dis, root, True, GrabModeAsync, GrabModeAsync, CurrentTime) == GrabSuccess)
+      return 1;
+    usleep(1000);
+  }
+  return 0;
+}
+
+void releasekeyboard() {
+  XUngrabKeyboard(dis, CurrentTime);  
+}
+
+void submap(struct Arg arg) {
+  int i;
+  XEvent e;
+  XKeyEvent ke;
+  KeySym keysym;
+
+  if (!grabkeyboard())
+    return;
+
+  for (i = 0; i < 1000; i++) {
+    XNextEvent(dis, &e);
+    if (e.type == KeyPress) {
+      ke = e.xkey;
+      keysym = XLookupKeysym(&ke, 0);
+      
+      if (!keyismod(keysym))
+	goto gotkey;
+    }
+  }
+
+  message("No key found in 1000 events... Umm");
+  goto end;
+
+ gotkey:
+
+  for (i = 0; arg.map[i].function != NULL; i++) {
+    if(arg.map[i].keysym == keysym && arg.map[i].mod == ke.state) {
+      arg.map[i].function(arg.map[i].arg);
+      goto end;
+    }
+  }
+
+  message("No key shortcut maped to that key");
+
+ end:
+  releasekeyboard();
+}
+
+void stickysubmap(struct Arg arg) {
+  int i;
+  XEvent e;
+  XKeyEvent ke;
+  KeySym keysym;
+
+  if (!grabkeyboard())
+    return;
+
+  message_wait("Sticky submap entered", 2);
+  while (1) {
+    XNextEvent(dis, &e);
+
+    if (e.type == KeyPress) {
+      ke = e.xkey;
+      keysym = XLookupKeysym(&ke, 0);
+
+      if (keyismod(keysym))
+	continue;
+
+      if (keysym == XK_Escape)
+	break;
+
+      if (keysym == XK_g && ke.state == ControlMask)
+	break;
+      
+      for (i = 0; arg.map[i].function != NULL; i++) {
+	if(arg.map[i].keysym == keysym && arg.map[i].mod == ke.state) {
+	  arg.map[i].function(arg.map[i].arg);
+	}
+      }
+    }
+  }
+  message_wait("Exited", 1);
+  releasekeyboard();
+}
+
+int keyismod(KeySym keysym) {
+  if (keysym == XK_Shift_L ||
+      keysym == XK_Shift_R ||
+      keysym == XK_Control_L ||
+      keysym == XK_Control_R ||
+      keysym == XK_Meta_L ||
+      keysym == XK_Meta_R ||
+      keysym == XK_Alt_L ||
+      keysym == XK_Alt_R
+      )
+    return 1;
+  return 0;
 }
 
 int main(int argc, char **argv) {

@@ -48,25 +48,35 @@ char* timecmd[]   = {"showtime", NULL};
 
 // Avoid multiple paste
 #define DESKTOPCHANGE(K,N)						\
-  {  MOD,             K,                          change_desktop, {.i = N}}, \
-    {  MOD|ShiftMask,   K,                          client_to_desktop, {.i = N}},
+  { MOD,             K,          change_desktop, {.i = N}}, \
+  { MOD|ShiftMask,   K,          client_to_desktop, {.i = N}},
 
 #define END {0,0,NULL,{.i = 0}}
+
+static struct key resizemap[] = {
+  { 0,               XK_h,      decrease,        {NULL}},
+  { 0,               XK_l,      increase,        {NULL}},
+  END
+};
 
 static struct key rootmap[] = {
   { 0,               XK_k,      kill_client,     {NULL}},
 
   { 0,               XK_o,      next_win,        {NULL}},
   { ShiftMask,       XK_o,      prev_win,        {NULL}},
-
+  { 0,               XK_j,      move_up,         {NULL}},
+  { 0,               XK_k,      move_down,       {NULL}},
+  
   { 0,               XK_m,      swap_master,     {NULL}},
   { 0,               XK_space,  switch_mode,     {NULL}},
   
   { 0,               XK_c,      spawn,           {.com = termcmd}},
-  { 0,               XK_w,      spawn,           {.com = webcmd}},
+  { 0,               XK_f,      spawn,           {.com = webcmd}},
   { 0,               XK_a,      spawn,           {.com = timecmd}},
   { ShiftMask,       XK_1,      spawn,           {.com = dmenucmd}},
 
+  { 0,               XK_r,      stickysubmap,    {.map = resizemap}},
+  
   { MOD,             XK_q,      quit,            {NULL}},
   END
 };
@@ -74,21 +84,17 @@ static struct key rootmap[] = {
 // Shortcuts
 static struct key keys[] = {
   // MOD              KEY                         FUNCTION        ARGS
-  {  MOD,             XK_p,                       submap,         {.map = rootmap}},
-  {  MOD,             XK_h,                       decrease,       {NULL}},
-  {  MOD,             XK_l,                       increase,       {NULL}},
-  {  MOD|ShiftMask,   XK_j,                       move_up,        {NULL}},
-  {  MOD|ShiftMask,   XK_k,                       move_down,      {NULL}},
-  DESKTOPCHANGE(   XK_0,                                       0)
-  DESKTOPCHANGE(   XK_1,                                       1)
-  DESKTOPCHANGE(   XK_2,                                       2)
-  DESKTOPCHANGE(   XK_3,                                       3)
-  DESKTOPCHANGE(   XK_4,                                       4)
-  DESKTOPCHANGE(   XK_5,                                       5)
-  DESKTOPCHANGE(   XK_6,                                       6)
-  DESKTOPCHANGE(   XK_7,                                       7)
-  DESKTOPCHANGE(   XK_8,                                       8)
-  DESKTOPCHANGE(   XK_9,                                       9)
+  { MOD,           XK_p,        submap,         {.map = rootmap}},
+  DESKTOPCHANGE(   XK_0,        0)
+  DESKTOPCHANGE(   XK_1,        1)
+  DESKTOPCHANGE(   XK_2,        2)
+  DESKTOPCHANGE(   XK_3,        3)
+  DESKTOPCHANGE(   XK_4,        4)
+  DESKTOPCHANGE(   XK_5,        5)
+  DESKTOPCHANGE(   XK_6,        6)
+  DESKTOPCHANGE(   XK_7,        7)
+  DESKTOPCHANGE(   XK_8,        8)
+  DESKTOPCHANGE(   XK_9,        9)
   END
 };
 

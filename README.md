@@ -54,11 +54,10 @@ Need Xlib and <https://github.com/mytch444/showmessage>, then:
 
 Bugs
 ----
- * submap does not work with mod keys. FIXED but there must be a better way
+ * Video players in fullscreen don't work how I would like.
 
 Todo
 ----
- * Add modes (not sure what you would call them) like stumpwm for resizing master area.
  * Switch to XCB // umm
 
 If you have some particular request, just send me an e-mail, and I will see for it!
