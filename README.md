@@ -46,10 +46,10 @@ and fullscreen mode
 Installation
 ------------
 
-Need Xlib, then:
+Need Xlib and <https://github.com/mytch444/showmessage>, then:
     $ emacs config.h
     $ make
-    # make install
+    $ make install
     $ make clean
 
 Bugs
