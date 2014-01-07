@@ -12,12 +12,18 @@ Summary
 -------
 
 catwm is a very simple and lightweight tiling window manager.
-I will try to stay under 1000 SLOC.
+This fork currently allows for space between windows (like bspwm)
+and strings of key combinations (C-b o) like emacs.
 
 Status
 ------
+This fork
+
+ * 07.01.14 -> v0.1 Added key strings and border space.
+
+catwm
  
- * 05.07.19 -> v0.3. Multiple desktops and correct some bugs
+ * 05.07.19 -> v0.3. Multiple desktops and correct some bugs // is it ment to be 19?
  * 30.06.10 -> v0.2. Back again \o/
  * 15.03.10 -> v0.2. The wm is functional -> I only use this wm!
  * 24.02.10 -> First release, v0.1. In this release 0.1, the wm is almost functional
@@ -37,25 +43,24 @@ It allow the "normal" modes of tiling window managers:
 
 and fullscreen mode
 
-There is no horizontal stack because I never use it. But if someone is interested in, it's very easy to add.
-
 Installation
 ------------
 
 Need Xlib, then:
-    $ vim config.h
+    $ emacs config.h
     $ make
     # make install
     $ make clean
 
 Bugs
 ----
- * No bugs for the moment ;) (I mean, no importants bugs ;)
+ * submap does not work with mod keys.
 
 Todo
 ----
- * Add multiple view ("desktop")
- * Switch to XCB
+ * Make submap work with mod's rather than think that shift is a key.
+ * Add modes (not sure what you would call them) like stumpwm for resizing master area.
+ * Switch to XCB // umm
 
 If you have some particular request, just send me an e-mail, and I will see for it!
 
