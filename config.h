@@ -39,7 +39,7 @@
 
 // Colors
 #define FOCUS           "rgb:88/88/88"
-#define UNFOCUS         "rgb:55/55/55"
+#define UNFOCUS         "rgb:33/33/33"
 
 char* dmenucmd[]  = {"dmenu_run", NULL};
 char* termcmd[]   = {"st", NULL};
@@ -66,18 +66,19 @@ static struct key rootmap[] = {
   { 0,               XK_w,      spawn,           {.com = webcmd}},
   { 0,               XK_a,      spawn,           {.com = timecmd}},
   { ShiftMask,       XK_1,      spawn,           {.com = dmenucmd}},
+
+  { MOD,             XK_q,      quit,            {NULL}},
   END
 };
 
 // Shortcuts
 static struct key keys[] = {
   // MOD              KEY                         FUNCTION        ARGS
-  {  MOD,             XK_b,                       submap,         {.map = rootmap}},
+  {  MOD,             XK_p,                       submap,         {.map = rootmap}},
   {  MOD,             XK_h,                       decrease,       {NULL}},
   {  MOD,             XK_l,                       increase,       {NULL}},
   {  MOD|ShiftMask,   XK_j,                       move_up,        {NULL}},
   {  MOD|ShiftMask,   XK_k,                       move_down,      {NULL}},
-  {  MOD,             XK_q,                       quit,           {NULL}},
   DESKTOPCHANGE(   XK_0,                                       0)
   DESKTOPCHANGE(   XK_1,                                       1)
   DESKTOPCHANGE(   XK_2,                                       2)

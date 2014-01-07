@@ -19,7 +19,7 @@ Status
 ------
 This fork
 
- * 07.01.14 -> v0.1 Added key strings and border space.
+ * 07.01.14 -> Added key strings and border space.
 
 catwm
  
@@ -54,11 +54,10 @@ Need Xlib and <https://github.com/mytch444/showmessage>, then:
 
 Bugs
 ----
- * submap does not work with mod keys.
+ * submap does not work with mod keys. FIXED but there must be a better way
 
 Todo
 ----
- * Make submap work with mod's rather than think that shift is a key.
  * Add modes (not sure what you would call them) like stumpwm for resizing master area.
  * Switch to XCB // umm
 

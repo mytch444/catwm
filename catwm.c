@@ -292,24 +292,35 @@ void submap(struct Arg arg) {
   int i;
   XEvent e;
   XKeyEvent ke;
- 
+  KeySym keysym;
+
   if (!grabkeyboard())
     return;
 
   for (i = 0; i < 1000; i++) {
     XNextEvent(dis, &e);
-    if (e.type == KeyPress)
-      goto gotkey;
+    if (e.type == KeyPress) {
+      ke = e.xkey;
+      keysym = XLookupKeysym(&ke, 0);
+      
+      if (keysym != XK_Shift_L &&
+	  keysym != XK_Shift_R &&
+	  keysym != XK_Control_L &&
+	  keysym != XK_Control_R &&
+	  keysym != XK_Meta_L &&
+	  keysym != XK_Meta_R
+	  )
+	goto gotkey;
+    }
   }
 
   message("No key found in 1000 events... Umm");
   goto end;
 
  gotkey:
-  ke = e.xkey;
-  
-  KeySym keysym = XKeycodeToKeysym(dis,ke.keycode,0);
 
+  //  keysym = XKeycodeToKeysym(dis, ke.keycode, 0);
+  keysym = XLookupKeysym(&ke, 0);
   for (i = 0; arg.map[i].function != NULL; i++) {
     if(arg.map[i].keysym == keysym && arg.map[i].mod == ke.state) {
       arg.map[i].function(arg.map[i].arg);
@@ -344,7 +355,7 @@ void increase() {
 void keypress(XEvent *e) {
   int i;
   XKeyEvent ke = e->xkey;
-  KeySym keysym = XKeycodeToKeysym(dis,ke.keycode,0);
+  KeySym keysym = XLookupKeysym(&ke, 0);//XKeycodeToKeysym(dis, ke.keycode, 0);
 
   for (i = 0; keys[i].function != NULL; i++) {
     if(keys[i].keysym == keysym && keys[i].mod == ke.state) {
