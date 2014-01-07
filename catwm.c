@@ -62,6 +62,7 @@ struct client{
   // Prev and next client
   client *next;
   client *prev;
+  int bw;
   
   // The window
   Window win;
@@ -605,16 +606,19 @@ void tile() {
     switch(mode) {
     case 0:
       if(head->next == NULL) {
+	head->bw = 1;
 	XMoveResizeWindow(dis,head->win,bs,bs,sw - 2 - bs * 2, sh - 2 - bs * 2);
 	return;
       }
       
       // Master window
+      head->bw = 1;
       XMoveResizeWindow(dis,head->win, bs, bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
       
       // Stack
       for(c=head->next;c;c=c->next) ++n;
       for(c=head->next;c;c=c->next) {
+	c->bw = 1;
 	XMoveResizeWindow(dis, c->win,
 			  master_size,
 			  y + bs / 2,
@@ -625,7 +629,8 @@ void tile() {
       break;
     case 1:
       for(c=head;c;c=c->next) {
-	XMoveResizeWindow(dis,c->win,0,0,sw-2,sh-2);
+	c->bw = 0;
+	XMoveResizeWindow(dis,c->win,0,0,sw,sh);
       }
       break;
     default:
@@ -640,7 +645,7 @@ void update_current() {
   for(c=head;c;c=c->next)
     if(current == c) {
       // "Enable" current window
-      XSetWindowBorderWidth(dis,c->win,1);
+      XSetWindowBorderWidth(dis,c->win,c->bw);
       XSetWindowBorder(dis,c->win,win_focus);
       XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
       XRaiseWindow(dis,c->win);
