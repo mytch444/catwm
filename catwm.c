@@ -38,9 +38,19 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+#include <X11/Xutil.h>
+#include <X11/XKBlib.h>
+#include <X11/Xproto.h>
+#include <X11/Xatom.h>
+
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
 
+#define RESIZE 1
+#define MOVE 2
+#define MINWSZ 50
+
 typedef struct key key;
+typedef struct button button;
 typedef struct client client;
 typedef struct desktop desktop;
 
@@ -58,11 +68,19 @@ struct key {
   struct Arg arg;
 };
 
-struct client{
+struct button {
+  unsigned int mask;
+  unsigned int button;
+  void (*function)(struct Arg arg);
+  struct Arg arg;
+};
+
+struct client {
   // Prev and next client
   client *next;
   client *prev;
   int bw;
+  int floating;
   
   // The window
   Window win;
@@ -104,7 +122,7 @@ static void sigchld(int unused);
 static void spawn(const struct Arg arg);
 static void start();
 static void swap_master();
-static void switch_mode();
+static void togglemonocle();
 static void tile();
 static void update_current();
 
@@ -116,6 +134,11 @@ static void message_wait(char *message, int t);
 static void submap(struct Arg arg);
 static void stickysubmap(struct Arg arg);
 static int keyismod(KeySym keysym);
+
+static void togglefloat(struct Arg arg);
+static void mousemotion(struct Arg arg);
+static void grabbuttons(struct client *c);
+static void buttonpress(XEvent *e);
 
 // Include configuration file (need struct key)
 #include "config.h"
@@ -142,7 +165,8 @@ static void (*events[LASTEvent])(XEvent *e) = {
   [MapRequest] = maprequest,
   [DestroyNotify] = destroynotify,
   [ConfigureNotify] = configurenotify,
-  [ConfigureRequest] = configurerequest
+  [ConfigureRequest] = configurerequest,
+  [ButtonPress] = buttonpress,
 };
 
 // Desktop array
@@ -153,24 +177,24 @@ void add_window(Window w) {
   
   if(!(c = (client *)calloc(1,sizeof(client))))
     die("Error calloc!");
-  
+
+  c->next = NULL;
+  c->win = w;
+
   if(head == NULL) {
-    c->next = NULL;
     c->prev = NULL;
-    c->win = w;
     head = c;
   }
   else {
     for(t=head;t->next;t=t->next);
     
-    c->next = NULL;
     c->prev = t;
-    c->win = w;
-    
     t->next = c;
   }
   
   current = c;
+
+  grabbuttons(c);
 }
 
 void change_desktop(const struct Arg arg) {
@@ -197,6 +221,10 @@ void change_desktop(const struct Arg arg) {
   
   tile();
   update_current();
+
+  char buf[10];
+  sprintf(buf, "%i", arg.i);
+  message_wait(buf, 1);
 }
 
 void client_to_desktop(const struct Arg arg) {
@@ -591,7 +619,7 @@ void swap_master() {
   }
 }
 
-void switch_mode() {
+void togglemonocle() {
   mode = (mode == 0) ? 1:0;
   tile();
   update_current();
@@ -605,19 +633,38 @@ void tile() {
   if(head != NULL) {
     switch(mode) {
     case 0:
-      if(head->next == NULL) {
-	head->bw = 1;
-	XMoveResizeWindow(dis,head->win,bs,bs,sw - 2 - bs * 2, sh - 2 - bs * 2);
-	return;
+      for(c=head;c;c=c->next) {
+	if (c->floating) continue;
+	n++;
+      }
+
+      if (n == 0) return;
+      //      if(head->next == NULL && !head->floating) {
+      if (n == 1) {
+	for(c=head;c;c=c->next) {
+	  if (c->floating) continue;
+	  head->bw = 1;
+	  XMoveResizeWindow(dis,head->win,bs,bs,sw - 2 - bs * 2, sh - 2 - bs * 2);
+	  return;
+	}
       }
       
       // Master window
-      head->bw = 1;
-      XMoveResizeWindow(dis,head->win, bs, bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
+      for(c=head;c;c=c->next) {
+	if (c->floating) continue;
+	c->bw = 1;
+	XMoveResizeWindow(dis,c->win, bs, bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
+	break;
+      }      
+
+      client *f;
+      f = c;
+
+      n--;
       
       // Stack
-      for(c=head->next;c;c=c->next) ++n;
-      for(c=head->next;c;c=c->next) {
+      for(c=f->next;c;c=c->next) {
+	if (c->floating) continue;
 	c->bw = 1;
 	XMoveResizeWindow(dis, c->win,
 			  master_size,
@@ -629,6 +676,7 @@ void tile() {
       break;
     case 1:
       for(c=head;c;c=c->next) {
+	if (c->floating) continue;
 	c->bw = 0;
 	XMoveResizeWindow(dis,c->win,0,0,sw,sh);
       }
@@ -779,8 +827,88 @@ int keyismod(KeySym keysym) {
   return 0;
 }
 
+void togglefloat(struct Arg arg) {
+  if (!current) return;
+
+  current->floating = !current->floating;
+
+  if (current->floating) {
+    XMoveResizeWindow(dis, current->win,
+		      sw / 3, sh / 3,
+		      sw / 3, sh / 3);
+  }
+  
+  tile();
+  update_current();
+}
+
+void mousemotion(struct Arg arg) {
+    XWindowAttributes wa;
+    XEvent ev;
+
+    fprintf(stderr, "checking mouse motion\n");
+    
+    if (!current || !XGetWindowAttributes(dis, current->win, &wa)) return;
+
+    if (arg.i == RESIZE) XWarpPointer(dis, current->win, current->win, 0, 0, 0, 0, --wa.width, --wa.height);
+    int rx, ry, c, xw, yh; unsigned int v; Window w;
+    if (!XQueryPointer(dis, root, &w, &w, &rx, &ry, &c, &c, &v) || w != current->win) return;
+
+    if (XGrabPointer(dis, root, False, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync,
+                     GrabModeAsync, None, None, CurrentTime) != GrabSuccess) return;
+
+    if (!current->floating) {
+      current->floating = 1;
+      tile();
+      update_current();
+    }
+
+    fprintf(stderr, "looping\n");
+    
+    do {
+      XMaskEvent(dis, ButtonPressMask|ButtonReleaseMask|PointerMotionMask|SubstructureRedirectMask, &ev);
+
+      if (ev.type == MotionNotify) {
+	
+	xw = (arg.i == MOVE ? wa.x:wa.width)  + ev.xmotion.x - rx;
+	yh = (arg.i == MOVE ? wa.y:wa.height) + ev.xmotion.y - ry;
+
+	if (arg.i == RESIZE)
+	  XResizeWindow(dis, current->win,
+			xw > MINWSZ ? xw:wa.width, yh > MINWSZ ? yh:wa.height);
+	
+	else if (arg.i == MOVE)
+	  XMoveWindow(dis, current->win, xw, yh);
+	
+      } else if (ev.type == ConfigureRequest || ev.type == MapRequest)
+	events[ev.type](&ev);
+      
+    } while (ev.type != ButtonRelease);
+
+    XUngrabPointer(dis, CurrentTime);
+}
+
+void grabbuttons(client *c) {
+  unsigned int b;
+
+  for (b = 0; b < TABLENGTH(buttons); b++) {
+    XGrabButton(dis, buttons[b].button, buttons[b].mask, c->win,
+		False, ButtonPressMask|ButtonReleaseMask, GrabModeAsync, GrabModeAsync, None, None);
+  }
+}
+
+void buttonpress(XEvent *e) {
+  unsigned int i;
+
+  for (i = 0; i < TABLENGTH(buttons); i++)
+    if (buttons[i].mask == e->xbutton.state &&
+	buttons[i].function && buttons[i].button == e->xbutton.button) {
+      buttons[i].function(buttons[i].arg);
+    }
+}
+
 int main(int argc, char **argv) {
-  // Open display   
+  // Open display
   if(!(dis = XOpenDisplay(NULL)))
     die("Cannot open display!");
   

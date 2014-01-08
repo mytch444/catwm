@@ -35,7 +35,7 @@
 // Mod (Mod1 == alt) and master size
 #define MOD             Mod1Mask
 #define MASTER_SIZE     0.5
-#define BORDER_SPACE    8
+#define BORDER_SPACE    0
 
 // Colors
 #define FOCUS           "rgb:88/88/88"
@@ -68,7 +68,9 @@ static struct key rootmap[] = {
   { 0,               XK_k,      move_down,       {NULL}},
   
   { 0,               XK_m,      swap_master,     {NULL}},
-  { 0,               XK_space,  switch_mode,     {NULL}},
+
+  { 0,               XK_m,      togglemonocle,  {NULL}},
+  { 0,               XK_space,  togglefloat,    {NULL}},
   
   { 0,               XK_c,      spawn,           {.com = termcmd}},
   { 0,               XK_f,      spawn,           {.com = webcmd}},
@@ -96,6 +98,11 @@ static struct key keys[] = {
   DESKTOPCHANGE(   XK_8,        8)
   DESKTOPCHANGE(   XK_9,        9)
   END
+};
+
+static struct button buttons[] = {
+    { MOD,           Button1,     mousemotion,   {.i = MOVE}},
+    { MOD|ShiftMask, Button1,     mousemotion,   {.i = RESIZE}},
 };
 
 #endif
