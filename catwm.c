@@ -480,7 +480,8 @@ void remove_window(Window w) {
   client **tc;
   
   for(tc = &head; *tc && (*tc)->win != w; tc = &(*tc)->next);
-
+  if (*tc == NULL) return;
+  
   // its the only window
   if ((*tc)->prev == NULL && (*tc)->next == NULL) {
     head = NULL;
