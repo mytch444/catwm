@@ -1,5 +1,5 @@
 /*
-  *   /\___/					\
+  *   /\___/\
   *  ( o   o )  Made by cat...
   *  (  =^=  )
   *  (        )            ... for cat!
@@ -45,6 +45,9 @@
 
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
 
+#define TILE 0
+#define MONOCLE 1
+
 #define RESIZE 1
 #define MOVE 2
 #define MINWSZ 50
@@ -60,7 +63,6 @@ struct Arg {
   int i;
 };
 
-// Structs
 struct key {
   unsigned int mod;
   KeySym keysym;
@@ -79,7 +81,8 @@ struct client {
   // Prev and next client
   client *next;
   client *prev;
-  int bw;
+
+  unsigned int bw;
   int floating;
   
   // The window
@@ -94,7 +97,7 @@ struct desktop{
 };
 
 // Functions
-static void add_window(Window w);
+static void add_window(Window w, int floating);
 static void change_desktop(const struct Arg arg);
 static void client_to_desktop(const struct Arg arg);
 static void configurenotify(XEvent *e);
@@ -134,7 +137,6 @@ static void message_wait(char *message, int t);
 static void submap(struct Arg arg);
 static void stickysubmap(struct Arg arg);
 static int keyismod(KeySym keysym);
-
 static void togglefloat(struct Arg arg);
 static void mousemotion(struct Arg arg);
 static void grabbuttons(struct client *c);
@@ -172,7 +174,7 @@ static void (*events[LASTEvent])(XEvent *e) = {
 // Desktop array
 static desktop desktops[10];
 
-void add_window(Window w) {
+void add_window(Window w, int floating) {
   client *c,*t;
   
   if(!(c = (client *)calloc(1,sizeof(client))))
@@ -180,6 +182,7 @@ void add_window(Window w) {
 
   c->next = NULL;
   c->win = w;
+  c->floating = floating;
 
   if(head == NULL) {
     c->prev = NULL;
@@ -233,16 +236,18 @@ void client_to_desktop(const struct Arg arg) {
   
   if(arg.i == current_desktop || current == NULL)
     return;
+
+  XUnmapWindow(dis, current->win);
+  remove_window(current->win);
+  save_desktop(tmp2);
   
   // Add client to desktop
   select_desktop(arg.i);
-  add_window(tmp->win);
+  add_window(tmp->win, tmp->floating);
   save_desktop(arg.i);
-  
-  // Remove client from current desktop
+
   select_desktop(tmp2);
-  remove_window(current->win);
-  
+
   tile();
   update_current();
 }
@@ -273,10 +278,10 @@ void decrease() {
 }
 
 void destroynotify(XEvent *e) {
-  int i=0;
+  int i;
   client *c;
   XDestroyWindowEvent *ev = &e->xdestroywindow;
-  
+
   // Uber (and ugly) hack ;)
   for(c=head;c;c=c->next)
     if(ev->window == c->win)
@@ -285,8 +290,9 @@ void destroynotify(XEvent *e) {
   // End of the hack
   if(i == 0)
     return;
-  
+
   remove_window(ev->window);
+
   tile();
   update_current();
 }
@@ -362,7 +368,7 @@ void maprequest(XEvent *e) {
       return;
     }
   
-  add_window(ev->window);
+  add_window(ev->window, 0);
   XMapWindow(dis,ev->window);
   tile();
   update_current();
@@ -373,13 +379,17 @@ void move_down() {
   if(current == NULL || current->next == NULL || current->win == head->win || current->prev == NULL) {
     return;
   }
-  tmp = current->win;
-  current->win = current->next->win;
-  current->next->win = tmp;
-  //keep the moved window activated
-  next_win();
-  tile();
-  update_current();
+  if (current->floating) {
+    XCirculateSubwindowsUp(dis, current->win);
+  } else {
+    tmp = current->win;
+    current->win = current->next->win;
+    current->next->win = tmp;
+    //keep the moved window activated
+    next_win();
+    tile();
+    update_current();
+  }
 }
 
 void move_up() {
@@ -387,12 +397,16 @@ void move_up() {
   if(current == NULL || current->prev == head || current->win == head->win) {
     return;
   }
-  tmp = current->win;
-  current->win = current->prev->win;
-  current->prev->win = tmp;
-  prev_win();
-  tile();
-  update_current();
+  if (current->floating) {
+    XCirculateSubwindowsDown(dis, current->win);
+  } else {
+    tmp = current->win;
+    current->win = current->prev->win;
+    current->prev->win = tmp;
+    prev_win();
+    tile();
+    update_current();
+  }
 }
 
 void next_win() {
@@ -463,38 +477,32 @@ void quit() {
 }
 
 void remove_window(Window w) {
-  client *c;
+  client **tc;
   
-  // CHANGE THIS UGLY CODE
-  for(c=head;c;c=c->next) {
-    
-    if(c->win == w) {
-      if(c->prev == NULL && c->next == NULL) {
-	free(head);
-	head = NULL;
-	current = NULL;
-	return;
-      }
-      
-      if(c->prev == NULL) {
-	head = c->next;
-	c->next->prev = NULL;
-	current = c->next;
-      }
-      else if(c->next == NULL) {
-	c->prev->next = NULL;
-	current = c->prev;
-      }
-      else {
-	c->prev->next = c->next;
-	c->next->prev = c->prev;
-	current = c->prev;
-      }
-      
-      free(c);
-      return;
-    }
+  for(tc = &head; *tc && (*tc)->win != w; tc = &(*tc)->next);
+
+  // its the only window
+  if ((*tc)->prev == NULL && (*tc)->next == NULL) {
+    head = NULL;
   }
+  // its the first window
+  else if ((*tc)->prev == NULL) {
+    (*tc)->next->prev = NULL;
+    head = (*tc)->next;
+  }
+  // its the last window
+  else if ((*tc)->next == NULL) {
+    (*tc)->prev->next = NULL;
+  }
+  // its not the first or last
+  else {
+    (*tc)->next->prev = (*tc)->prev;
+    *tc = (*tc)->next;
+    current = *tc;
+    return;
+  }
+
+  current = head;
 }
 
 void save_desktop(int i) {
@@ -620,7 +628,7 @@ void swap_master() {
 }
 
 void togglemonocle() {
-  mode = (mode == 0) ? 1:0;
+  mode = (mode == TILE) ? MONOCLE:TILE;
   tile();
   update_current();
 }
@@ -629,43 +637,25 @@ void tile() {
   client *c;
   int n = 0;
   int y = bs / 2;
-  
-  if(head != NULL) {
-    switch(mode) {
-    case 0:
-      for(c=head;c;c=c->next) {
-	if (c->floating) continue;
-	n++;
-      }
 
-      if (n == 0) return;
-      //      if(head->next == NULL && !head->floating) {
-      if (n == 1) {
-	for(c=head;c;c=c->next) {
-	  if (c->floating) continue;
-	  head->bw = 1;
-	  XMoveResizeWindow(dis,head->win,bs,bs,sw - 2 - bs * 2, sh - 2 - bs * 2);
-	  return;
-	}
-      }
-      
+  if(head != NULL) {
+    for(c=head;c;c=c->next) {
+      c->bw = 1;
+      if (!c->floating) n++;
+    }
+
+    if (n > 1 && mode == TILE) {
+      n--;
       // Master window
       for(c=head;c;c=c->next) {
 	if (c->floating) continue;
-	c->bw = 1;
 	XMoveResizeWindow(dis,c->win, bs, bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
 	break;
-      }      
-
-      client *f;
-      f = c;
-
-      n--;
+      }
       
       // Stack
-      for(c=f->next;c;c=c->next) {
+      for(c=c->next;c;c=c->next) {
 	if (c->floating) continue;
-	c->bw = 1;
 	XMoveResizeWindow(dis, c->win,
 			  master_size,
 			  y + bs / 2,
@@ -673,33 +663,31 @@ void tile() {
 			  ((sh - bs) / n) - 2 - bs);
 	y += (sh - bs) / n;
       }
-      break;
-    case 1:
+    } else if (n > 0) {
       for(c=head;c;c=c->next) {
 	if (c->floating) continue;
 	c->bw = 0;
 	XMoveResizeWindow(dis,c->win,0,0,sw,sh);
       }
-      break;
-    default:
-      break;
     }
   }
 }
 
+
 void update_current() {
   client *c;
   
-  for(c=head;c;c=c->next)
+  for(c=head;c;c=c->next) {
+    XSetWindowBorderWidth(dis,c->win,c->bw);
     if(current == c) {
       // "Enable" current window
-      XSetWindowBorderWidth(dis,c->win,c->bw);
       XSetWindowBorder(dis,c->win,win_focus);
       XSetInputFocus(dis,c->win,RevertToParent,CurrentTime);
-      XRaiseWindow(dis,c->win);
-    }
-    else
+      XRaiseWindow(dis,current->win);
+    } else {
       XSetWindowBorder(dis,c->win,win_unfocus);
+    }
+  }
 }
 
 void message(char *message) {
@@ -836,6 +824,7 @@ void togglefloat(struct Arg arg) {
     XMoveResizeWindow(dis, current->win,
 		      sw / 3, sh / 3,
 		      sw / 3, sh / 3);
+    XRaiseWindow(dis,current->win);
   }
   
   tile();
@@ -846,9 +835,7 @@ void mousemotion(struct Arg arg) {
     XWindowAttributes wa;
     XEvent ev;
 
-    fprintf(stderr, "checking mouse motion\n");
-    
-    if (!current || !XGetWindowAttributes(dis, current->win, &wa)) return;
+    if (!current || !current->floating || !XGetWindowAttributes(dis, current->win, &wa)) return;
 
     if (arg.i == RESIZE) XWarpPointer(dis, current->win, current->win, 0, 0, 0, 0, --wa.width, --wa.height);
     int rx, ry, c, xw, yh; unsigned int v; Window w;
@@ -863,8 +850,6 @@ void mousemotion(struct Arg arg) {
       update_current();
     }
 
-    fprintf(stderr, "looping\n");
-    
     do {
       XMaskEvent(dis, ButtonPressMask|ButtonReleaseMask|PointerMotionMask|SubstructureRedirectMask, &ev);
 

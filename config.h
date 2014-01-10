@@ -1,5 +1,5 @@
  /*
-  *   /\___/					\
+  *   /\___/\
   *  ( o   o )  Made by cat...
   *  (  =^=  )
   *  (        )            ... for cat!
@@ -64,13 +64,14 @@ static struct key rootmap[] = {
 
   { 0,               XK_o,      next_win,        {NULL}},
   { ShiftMask,       XK_o,      prev_win,        {NULL}},
-  { 0,               XK_j,      move_up,         {NULL}},
-  { 0,               XK_k,      move_down,       {NULL}},
-  
-  { 0,               XK_m,      swap_master,     {NULL}},
 
-  { 0,               XK_m,      togglemonocle,  {NULL}},
-  { 0,               XK_space,  togglefloat,    {NULL}},
+  { 0,               XK_p,      move_up,         {NULL}},
+  { 0,               XK_n,      move_down,       {NULL}},
+  
+  { 0,               XK_Return, swap_master,     {NULL}},
+
+  { 0,               XK_m,      togglemonocle,   {NULL}},
+  { 0,               XK_space,  togglefloat,     {NULL}},
   
   { 0,               XK_c,      spawn,           {.com = termcmd}},
   { 0,               XK_f,      spawn,           {.com = webcmd}},
