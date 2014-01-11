@@ -289,11 +289,7 @@ void init_desktops(monitor *mon) {
 void select_monitor(int i) {
   int j;
   client *c;
-  if (i >= monitors_count) {
-    fprintf(stderr, "There are not that many monitors\n");
-    return;
-  }
-
+  
   current_monitor = i;
   
   sh = monitors[i].sh;
@@ -317,10 +313,6 @@ void select_monitor(int i) {
 
 void save_monitor(int i) {
   int j;
-  if (i >= monitors_count) {
-    fprintf(stderr, "There are not that many monitors\n");
-    return;
-  }
 
   monitors[i].current_desktop = current_desktop;
   save_desktop(current_desktop);
@@ -338,10 +330,14 @@ void copy_desktop(desktop *new, desktop old) {
 
 int cycle_monitor(int n) {
   int new = current_monitor + n;
-  if (new < 0)
-    new = monitors_count - 1 + new;
-  if (new >= monitors_count)
-    new = new - monitors_count - 1;
+  
+  while (new < 0)
+    new += monitors_count;
+
+  while (new >= monitors_count)
+    new -= monitors_count;
+
+  fprintf(stderr, "from %i incremented by %i to %i\n", current_monitor, n, new);
   return new;
 }
 
