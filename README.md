@@ -19,6 +19,7 @@ Status
 ------
 This fork
 
+ * 11.01.14 -> Added Xinerama support, floating windows and some other things.
  * 07.01.14 -> Added key strings and border space.
 
 catwm
@@ -41,20 +42,21 @@ It allow the "normal" modes of tiling window managers:
     |        |___|
     --------------
 
-and fullscreen mode
+fullscreen mode and floating.
 
 Installation
 ------------
 
 Need Xlib and <https://github.com/mytch444/showmessage>, then:
-    $ emacs config.h
-    $ make
-    $ make install
-    $ make clean
+
+  $ emacs config.h
+  $ make
+  $ make install
+  $ make clean
 
 Bugs
 ----
- * Video players in fullscreen don't work how I would like.
+ * Closing chromium with kill_client crashes X on one machine but on another it works fine.
 
 Todo
 ----

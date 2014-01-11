@@ -79,6 +79,9 @@ static struct key rootmap[] = {
   { ShiftMask,       XK_1,      spawn,           {.com = dmenucmd}},
 
   { 0,               XK_r,      stickysubmap,    {.map = resizemap}},
+
+  { 0,               XK_comma,  change_monitor,  {.i = 1}},
+  { 0,               XK_period, change_monitor,  {.i = -1}},
   
   { MOD,             XK_q,      quit,            {NULL}},
   END
@@ -88,16 +91,16 @@ static struct key rootmap[] = {
 static struct key keys[] = {
   // MOD              KEY                         FUNCTION        ARGS
   { MOD,           XK_p,        submap,         {.map = rootmap}},
-  DESKTOPCHANGE(   XK_0,        0)
-  DESKTOPCHANGE(   XK_1,        1)
-  DESKTOPCHANGE(   XK_2,        2)
-  DESKTOPCHANGE(   XK_3,        3)
-  DESKTOPCHANGE(   XK_4,        4)
-  DESKTOPCHANGE(   XK_5,        5)
-  DESKTOPCHANGE(   XK_6,        6)
-  DESKTOPCHANGE(   XK_7,        7)
-  DESKTOPCHANGE(   XK_8,        8)
-  DESKTOPCHANGE(   XK_9,        9)
+  DESKTOPCHANGE(   XK_1,        0)
+  DESKTOPCHANGE(   XK_2,        1)
+  DESKTOPCHANGE(   XK_3,        2)
+  DESKTOPCHANGE(   XK_4,        3)
+  DESKTOPCHANGE(   XK_5,        4)
+  DESKTOPCHANGE(   XK_6,        5)
+  DESKTOPCHANGE(   XK_7,        6)
+  DESKTOPCHANGE(   XK_8,        7)
+  DESKTOPCHANGE(   XK_9,        8)
+  DESKTOPCHANGE(   XK_0,        9)
   END
 };
 

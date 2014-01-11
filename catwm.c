@@ -26,6 +26,11 @@
   *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
   *  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
   *  DEALINGS IN THE SOFTWARE.
+#include <X11/Xutil.h>
+#include <X11/XKBlib.h>
+#include <X11/Xproto.h>
+#include <X11/Xatom.h>
+
   *
   */
 
@@ -37,11 +42,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/wait.h>
-
-#include <X11/Xutil.h>
-#include <X11/XKBlib.h>
-#include <X11/Xproto.h>
-#include <X11/Xatom.h>
+#include <X11/extensions/Xinerama.h>
 
 #define TABLENGTH(X)    (sizeof(X)/sizeof(*X))
 
@@ -56,6 +57,7 @@ typedef struct key key;
 typedef struct button button;
 typedef struct client client;
 typedef struct desktop desktop;
+typedef struct monitor monitor;
 
 struct Arg {
   char** com;
@@ -78,22 +80,30 @@ struct button {
 };
 
 struct client {
-  // Prev and next client
   client *next;
   client *prev;
 
   unsigned int bw;
   int floating;
-  
-  // The window
+
   Window win;
 };
 
-struct desktop{
+struct desktop {
   int master_size;
   int mode;
   client *head;
   client *current;
+};
+
+struct monitor {
+  int sw;
+  int sh;
+  int x;
+  int y;
+
+  desktop desktops[10];
+  int current_desktop;
 };
 
 // Functions
@@ -128,12 +138,10 @@ static void swap_master();
 static void togglemonocle();
 static void tile();
 static void update_current();
-
 static int grabkeyboard();
 static void releasekeyboard();
 static void message(char *message);
 static void message_wait(char *message, int t);
-
 static void submap(struct Arg arg);
 static void stickysubmap(struct Arg arg);
 static int keyismod(KeySym keysym);
@@ -141,23 +149,38 @@ static void togglefloat(struct Arg arg);
 static void mousemotion(struct Arg arg);
 static void grabbuttons(struct client *c);
 static void buttonpress(XEvent *e);
-
+static void update_monitors();
+static void select_monitor(int i);
+static void change_monitor(struct Arg arg);
+static void init_desktops(monitor *mon);
+static void copy_desktop(desktop *new, desktop old);
+  
 // Include configuration file (need struct key)
 #include "config.h"
 
 // Variable
 static Display *dis;
-static int bool_quit;
-static int current_desktop;
-static int master_size;
-static int bs;
-static int mode;
-static int sh;
-static int sw;
+static Window root;
 static int screen;
+
+static int bool_quit;
+static int bs;
 static unsigned int win_focus;
 static unsigned int win_unfocus;
-static Window root;
+
+static int current_monitor;
+static monitor *monitors;
+static int monitors_count;
+
+static int sh;
+static int sw;
+static int sx;
+static int sy;
+
+static desktop desktops[10];
+static int current_desktop;
+static int master_size;
+static int mode;
 static client *head;
 static client *current;
 
@@ -171,8 +194,163 @@ static void (*events[LASTEvent])(XEvent *e) = {
   [ButtonPress] = buttonpress,
 };
 
-// Desktop array
-static desktop desktops[10];
+void setup() {
+  // Install a signal
+  sigchld(0);
+
+  monitors_count = 0;
+  current_monitor = 0;
+
+  bool_quit = 0;
+  mode = 0;
+  head = NULL;
+  current = NULL;
+  bs = BORDER_SPACE;
+  
+  // Screen and root window
+  screen = DefaultScreen(dis);
+  root = RootWindow(dis,screen);
+  
+  update_monitors();
+  select_monitor(0);
+  
+  // Colors
+  win_focus = getcolor(FOCUS);
+  win_unfocus = getcolor(UNFOCUS);
+  
+  grabkeys();
+
+  // To catch maprequest and destroynotify (if other wm running)
+  XSelectInput(dis,root,SubstructureNotifyMask|SubstructureRedirectMask);
+}
+
+void update_monitors() {
+  int i;
+  
+  if (XineramaIsActive(dis)) {
+    int count = 0;
+    XineramaScreenInfo *info = NULL;
+
+    if (!(info = XineramaQueryScreens(dis, &count)))
+      die("Error xineramaQueryScreens!");
+
+    if (count == monitors_count) {
+      for (i = 0; i < count; ++i) {
+	monitors[i].sw = info[i].width;
+	monitors[i].sh = info[i].height;
+	monitors[i].x = info[i].x_org;
+	monitors[i].y = info[i].y_org;
+	monitors[i].current_desktop = 0;
+      }
+    } else if (count > monitors_count) {
+      if (!(monitors = (monitor*) realloc(monitors, count * sizeof(monitor))))
+	die("Error realloc!");
+
+      for (i = count - (count - monitors_count); i < count; ++i) {
+	monitors[i].sw = info[i].width;
+	monitors[i].sh = info[i].height;
+	monitors[i].x = info[i].x_org;
+	monitors[i].y = info[i].y_org;
+	monitors[i].current_desktop = 0;
+      }
+    } else if (count < monitors_count) {
+      if (!(monitors = (monitor*)realloc(monitors, count * sizeof(monitor))))
+	die("Error realloc!");
+    }
+
+    monitors_count = count;
+    XFree(info);
+  }
+
+  if (!monitors) {
+    if (!(monitors = (monitor*) realloc(monitors, sizeof(monitor))))
+      die("Error realloc!");
+    
+    monitors_count = 1;
+    monitors[0].sw = XDisplayWidth(dis,screen);
+    monitors[0].sh = XDisplayHeight(dis,screen);
+    monitors[0].x = 0;
+    monitors[0].y = 0;
+    monitors[0].current_desktop = 0;
+  }
+
+  for (i = 0; i < monitors_count; i++) {
+    init_desktops(&monitors[i]);
+  }
+}
+
+void init_desktops(monitor *mon) {
+  int i;
+  for (i = 0; i < 10; i++) {
+    mon->desktops[i].master_size = mon->sw * MASTER_SIZE;
+    mon->desktops[i].mode = mode;
+    mon->desktops[i].head = NULL;
+    mon->desktops[i].current = NULL;
+  }
+}
+
+void select_monitor(int i) {
+  int j;
+  client *c;
+  if (i >= monitors_count) {
+    fprintf(stderr, "There are not that many monitors\n");
+    return;
+  }
+
+  current_monitor = i;
+  
+  sh = monitors[i].sh;
+  sw = monitors[i].sw;
+  sx = monitors[i].x;
+  sy = monitors[i].y;
+
+  for (j = 0; j < 10; j++) {
+    desktops[j] = monitors[i].desktops[j];
+    copy_desktop(&desktops[j], monitors[i].desktops[j]);
+  }
+
+  // Take "properties" from the new desktop
+  select_desktop(monitors[i].current_desktop);
+  
+  // Map all windows
+  if(head != NULL)
+    for(c=head;c;c=c->next)
+      XMapWindow(dis,c->win);
+}
+
+void save_monitor(int i) {
+  int j;
+  if (i >= monitors_count) {
+    fprintf(stderr, "There are not that many monitors\n");
+    return;
+  }
+
+  monitors[i].current_desktop = current_desktop;
+  save_desktop(current_desktop);
+  for (j = 0; j < 10; j++) {
+    copy_desktop(&(monitors[i].desktops[j]), desktops[j]);
+  }
+}
+
+void copy_desktop(desktop *new, desktop old) {
+  (*new).master_size = old.master_size;
+  (*new).mode = old.mode;
+  (*new).head = old.head;
+  (*new).current = old.current;  
+}
+
+void change_monitor(const struct Arg arg) {
+  int new = current_monitor + arg.i;
+  if (new < 0)
+    new = monitors_count - 1 + new;
+
+  save_monitor(current_monitor);
+
+  select_monitor(new);
+  
+  tile();
+  update_current();
+}
 
 void add_window(Window w, int floating) {
   client *c,*t;
@@ -298,7 +476,7 @@ void destroynotify(XEvent *e) {
 }
 
 void die(const char* e) {
-  fprintf(stdout,"catwm: %s\n",e);
+  fprintf(stderr,"catwm: %s\n",e);
   exit(1);
 }
 
@@ -342,17 +520,32 @@ void keypress(XEvent *e) {
   }
 }
 
+void send_kill_signal(Window w) { 
+  XEvent ke;
+  ke.type = ClientMessage;
+  ke.xclient.window = w;
+  ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
+  ke.xclient.format = 32;
+  ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
+  ke.xclient.data.l[1] = CurrentTime;
+  XSendEvent(dis, w, False, NoEventMask, &ke);
+}
+
+/*
+  I feel as though there could be a reason for having the same funtion call twice in as row
+  as I cannot see any difference between the send_kill_signal and the code below.
+ */
 void kill_client() {
   if(current != NULL) {
     //send delete signal to window
-    XEvent ke;
+    /*    XEvent ke;
     ke.type = ClientMessage;
     ke.xclient.window = current->win;
     ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
     ke.xclient.format = 32;
     ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
     ke.xclient.data.l[1] = CurrentTime;
-    XSendEvent(dis, current->win, False, NoEventMask, &ke);
+    XSendEvent(dis, current->win, False, NoEventMask, &ke);*/
     send_kill_signal(current->win);
   }
 }
@@ -482,28 +675,24 @@ void remove_window(Window w) {
   for(tc = &head; *tc && (*tc)->win != w; tc = &(*tc)->next);
   if (*tc == NULL) return;
   
-  // its the only window
   if ((*tc)->prev == NULL && (*tc)->next == NULL) {
     head = NULL;
+    current = NULL;
   }
-  // its the first window
   else if ((*tc)->prev == NULL) {
     (*tc)->next->prev = NULL;
     head = (*tc)->next;
+    current = head;
   }
-  // its the last window
   else if ((*tc)->next == NULL) {
+    current = (*tc)->prev;
     (*tc)->prev->next = NULL;
   }
-  // its not the first or last
   else {
     (*tc)->next->prev = (*tc)->prev;
-    *tc = (*tc)->next;
-    current = *tc;
-    return;
+    current = (*tc)->next;
+    (*tc)->prev->next = (*tc)->next;
   }
-
-  current = head;
 }
 
 void save_desktop(int i) {
@@ -519,69 +708,6 @@ void select_desktop(int i) {
   master_size = desktops[i].master_size;
   mode = desktops[i].mode;
   current_desktop = i;
-}
-
-void send_kill_signal(Window w) { 
-  XEvent ke;
-  ke.type = ClientMessage;
-  ke.xclient.window = w;
-  ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
-  ke.xclient.format = 32;
-  ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
-  ke.xclient.data.l[1] = CurrentTime;
-  XSendEvent(dis, w, False, NoEventMask, &ke);
-}
-
-void setup() {
-  // Install a signal
-  sigchld(0);
-  
-  // Screen and root window
-  screen = DefaultScreen(dis);
-  root = RootWindow(dis,screen);
-  
-  // Screen width and height
-  sw = XDisplayWidth(dis,screen);
-  sh = XDisplayHeight(dis,screen);
-  
-  // Colors
-  win_focus = getcolor(FOCUS);
-  win_unfocus = getcolor(UNFOCUS);
-  
-  // Shortcuts
-  grabkeys();
-  
-  // Vertical stack
-  mode = 0;
-  
-  // For exiting
-  bool_quit = 0;
-  
-  // List of client
-  head = NULL;
-  current = NULL;
-  
-  // Master size
-  master_size = sw*MASTER_SIZE;
-  
-  bs = BORDER_SPACE;
-  
-  // Set up all desktop
-  int i;
-  for(i=0;i<TABLENGTH(desktops);++i) {
-    desktops[i].master_size = master_size;
-    desktops[i].mode = mode;
-    desktops[i].head = head;
-    desktops[i].current = current;
-  }
-  
-  // Select first dekstop by default
-  const struct Arg arg = {.i = 1};
-  current_desktop = arg.i;
-  change_desktop(arg);
-  
-  // To catch maprequest and destroynotify (if other wm running)
-  XSelectInput(dis,root,SubstructureNotifyMask|SubstructureRedirectMask);
 }
 
 void sigchld(int unused) {
@@ -647,19 +773,18 @@ void tile() {
 
     if (n > 1 && mode == TILE) {
       n--;
-      // Master window
+
       for(c=head;c;c=c->next) {
 	if (c->floating) continue;
-	XMoveResizeWindow(dis,c->win, bs, bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
+	XMoveResizeWindow(dis,c->win, sx + bs, sy + bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
 	break;
       }
-      
-      // Stack
+
       for(c=c->next;c;c=c->next) {
 	if (c->floating) continue;
 	XMoveResizeWindow(dis, c->win,
-			  master_size,
-			  y + bs / 2,
+			  sx + master_size,
+			  sy + y + bs / 2,
 			  sw - master_size - 2 - bs,
 			  ((sh - bs) / n) - 2 - bs);
 	y += (sh - bs) / n;
@@ -668,7 +793,7 @@ void tile() {
       for(c=head;c;c=c->next) {
 	if (c->floating) continue;
 	c->bw = 0;
-	XMoveResizeWindow(dis,c->win,0,0,sw,sh);
+	XMoveResizeWindow(dis,c->win,sx,sy,sw,sh);
       }
     }
   }
@@ -823,7 +948,7 @@ void togglefloat(struct Arg arg) {
 
   if (current->floating) {
     XMoveResizeWindow(dis, current->win,
-		      sw / 3, sh / 3,
+		      sx + sw / 3, sy + sh / 3,
 		      sw / 3, sh / 3);
     XRaiseWindow(dis,current->win);
   }
@@ -861,7 +986,7 @@ void mousemotion(struct Arg arg) {
 
 	if (arg.i == RESIZE)
 	  XResizeWindow(dis, current->win,
-			xw > MINWSZ ? xw:wa.width, yh > MINWSZ ? yh:wa.height);
+			xw > MINWSZ ? xw:MINWSZ, yh > MINWSZ ? yh:MINWSZ);
 	
 	else if (arg.i == MOVE)
 	  XMoveWindow(dis, current->win, xw, yh);

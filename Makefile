@@ -1,6 +1,6 @@
 CFLAGS+= -Wall
 LDADD+= -lX11 
-LDFLAGS=
+LDFLAGS=-lXinerama
 EXEC=catwm
 
 PREFIX?= /usr
