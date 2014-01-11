@@ -82,6 +82,9 @@ static struct key rootmap[] = {
 
   { 0,               XK_comma,  change_monitor,  {.i = 1}},
   { 0,               XK_period, change_monitor,  {.i = -1}},
+
+  { ShiftMask,       XK_comma,  send_to_monitor,  {.i = 1}},
+  { ShiftMask,       XK_period, send_to_monitor,  {.i = -1}},
   
   { MOD,             XK_q,      quit,            {NULL}},
   END

@@ -152,9 +152,11 @@ static void buttonpress(XEvent *e);
 static void update_monitors();
 static void select_monitor(int i);
 static void change_monitor(struct Arg arg);
+static void send_to_monitor(struct Arg arg);
 static void init_desktops(monitor *mon);
 static void copy_desktop(desktop *new, desktop old);
-  
+static int cycle_monitor(int n);
+
 // Include configuration file (need struct key)
 #include "config.h"
 
@@ -339,14 +341,50 @@ void copy_desktop(desktop *new, desktop old) {
   (*new).current = old.current;  
 }
 
-void change_monitor(const struct Arg arg) {
-  int new = current_monitor + arg.i;
+int cycle_monitor(int n) {
+  int new = current_monitor + n;
   if (new < 0)
     new = monitors_count - 1 + new;
+  if (new >= monitors_count)
+    new = new - monitors_count - 1;
+  return new;
+}
 
+void change_monitor(const struct Arg arg) {
+  int new;
+
+  if (monitors_count == 1) return;
+
+  new = cycle_monitor(arg.i);
+  
   save_monitor(current_monitor);
 
   select_monitor(new);
+  
+  tile();
+  update_current();
+}
+
+void send_to_monitor(const struct Arg arg) {
+  int new = current_monitor + arg.i;
+  client *tmp;
+  
+  if (current == NULL)
+    return;
+
+  new = cycle_monitor(arg.i);
+  
+  tmp = current;
+  
+  //  XUnmapWindow(dis, current->win);
+  remove_window(tmp->win);
+
+  save_monitor(current_monitor);
+  
+  // Add client to desktop
+  select_monitor(new);
+  add_window(tmp->win, tmp->floating);
+  //  XMapWindow(dis, current->win);
   
   tile();
   update_current();
