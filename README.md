@@ -56,7 +56,7 @@ Need Xlib and <https://github.com/mytch444/showmessage>, then:
 
 Bugs
 ----
- * Closing chromium with kill_client crashes X on one machine but on another it works fine.
+ * None that I have found. At least not bad enough for me to remember.
 
 Todo
 ----

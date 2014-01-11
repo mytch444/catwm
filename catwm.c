@@ -26,11 +26,6 @@
   *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
   *  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
   *  DEALINGS IN THE SOFTWARE.
-#include <X11/Xutil.h>
-#include <X11/XKBlib.h>
-#include <X11/Xproto.h>
-#include <X11/Xatom.h>
-
   *
   */
 
@@ -558,15 +553,22 @@ void keypress(XEvent *e) {
   }
 }
 
-void send_kill_signal(Window w) { 
+void send_kill_signal(Window w) {
+  int n, i;
   XEvent ke;
-  ke.type = ClientMessage;
-  ke.xclient.window = w;
-  ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
-  ke.xclient.format = 32;
-  ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
-  ke.xclient.data.l[1] = CurrentTime;
-  XSendEvent(dis, w, False, NoEventMask, &ke);
+  Atom *protocols;
+  
+  if (XGetWMProtocols(dis, w, &protocols, &n) != 0) {
+    for (i = n; i >= 0; i--) {
+      ke.type = ClientMessage;
+      ke.xclient.window = w;
+      ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", False);
+      ke.xclient.format = 32;
+      ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", False);
+      ke.xclient.data.l[1] = CurrentTime;
+      XSendEvent(dis, w, False, NoEventMask, &ke);
+    }
+  }
 }
 
 /*
@@ -574,18 +576,9 @@ void send_kill_signal(Window w) {
   as I cannot see any difference between the send_kill_signal and the code below.
  */
 void kill_client() {
-  if(current != NULL) {
-    //send delete signal to window
-    /*    XEvent ke;
-    ke.type = ClientMessage;
-    ke.xclient.window = current->win;
-    ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
-    ke.xclient.format = 32;
-    ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
-    ke.xclient.data.l[1] = CurrentTime;
-    XSendEvent(dis, current->win, False, NoEventMask, &ke);*/
-    send_kill_signal(current->win);
-  }
+  if(current == NULL) return;
+  send_kill_signal(current->win);
+  remove_window(current->win);
 }
 
 void maprequest(XEvent *e) {
