@@ -56,8 +56,11 @@ Need Xlib and <https://github.com/mytch444/showmessage>, then:
 
 Bugs
 ----
+ * Some programs seem to crash X when they are closed on one computer while working fine
+   on another. Only thing that I can see that could cause it is different graphics cards
+   or 32 vs 64 bit. The programs are chromium and lxappearance that I have noted. I have
+   a fix that helps with some of it but I'm pretty sure its just covering up the problem.
  * make doesn't recompile when config.h is changed. No major but annoying.
- * None that I have found. At least not bad enough for me to remember.
 
 Todo
 ----

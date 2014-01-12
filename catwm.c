@@ -77,10 +77,10 @@ struct button {
 struct client {
   client *next;
   client *prev;
-
+  
   unsigned int bw;
   int floating;
-
+  
   Window win;
 };
 
@@ -96,7 +96,7 @@ struct monitor {
   int sh;
   int x;
   int y;
-
+  
   desktop desktops[10];
   int current_desktop;
 };
@@ -122,6 +122,7 @@ static void next_win();
 static void prev_win();
 static void quit();
 static void remove_window(Window w);
+static int remove_window_current(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static void send_kill_signal(Window w);
@@ -148,7 +149,7 @@ static void buttonpress(XEvent *e);
 static void update_monitors();
 static void select_monitor(int i);
 static void change_monitor(struct Arg arg);
-static void send_to_monitor(struct Arg arg);
+static void client_to_monitor(struct Arg arg);
 static void init_desktops(monitor *mon);
 static void copy_desktop(desktop *new, desktop old);
 static int cycle_monitor(int n);
@@ -195,10 +196,10 @@ static void (*events[LASTEvent])(XEvent *e) = {
 void setup() {
   // Install a signal
   sigchld(0);
-
+  
   monitors_count = 0;
   current_monitor = 0;
-
+  
   bool_quit = 0;
   mode = 0;
   head = NULL;
@@ -217,7 +218,7 @@ void setup() {
   win_unfocus = getcolor(UNFOCUS);
   
   grabkeys();
-
+  
   // To catch maprequest and destroynotify (if other wm running)
   XSelectInput(dis,root,SubstructureNotifyMask|SubstructureRedirectMask);
 }
@@ -228,10 +229,10 @@ void update_monitors() {
   if (XineramaIsActive(dis)) {
     int count = 0;
     XineramaScreenInfo *info = NULL;
-
+    
     if (!(info = XineramaQueryScreens(dis, &count)))
       die("Error xineramaQueryScreens!");
-
+    
     if (count == monitors_count) {
       for (i = 0; i < count; ++i) {
 	monitors[i].sw = info[i].width;
@@ -243,7 +244,7 @@ void update_monitors() {
     } else if (count > monitors_count) {
       if (!(monitors = (monitor*) realloc(monitors, count * sizeof(monitor))))
 	die("Error realloc!");
-
+      
       for (i = count - (count - monitors_count); i < count; ++i) {
 	monitors[i].sw = info[i].width;
 	monitors[i].sh = info[i].height;
@@ -255,11 +256,11 @@ void update_monitors() {
       if (!(monitors = (monitor*)realloc(monitors, count * sizeof(monitor))))
 	die("Error realloc!");
     }
-
+    
     monitors_count = count;
     XFree(info);
   }
-
+  
   if (!monitors) {
     if (!(monitors = (monitor*) realloc(monitors, sizeof(monitor))))
       die("Error realloc!");
@@ -271,7 +272,7 @@ void update_monitors() {
     monitors[0].y = 0;
     monitors[0].current_desktop = 0;
   }
-
+  
   for (i = 0; i < monitors_count; i++) {
     init_desktops(&monitors[i]);
   }
@@ -289,7 +290,6 @@ void init_desktops(monitor *mon) {
 
 void select_monitor(int i) {
   int j;
-  client *c;
   
   current_monitor = i;
   
@@ -297,24 +297,18 @@ void select_monitor(int i) {
   sw = monitors[i].sw;
   sx = monitors[i].x;
   sy = monitors[i].y;
-
+  
   for (j = 0; j < 10; j++) {
     desktops[j] = monitors[i].desktops[j];
     copy_desktop(&desktops[j], monitors[i].desktops[j]);
   }
-
-  // Take "properties" from the new desktop
-  select_desktop(monitors[i].current_desktop);
   
-  // Map all windows
-  if(head != NULL)
-    for(c=head;c;c=c->next)
-      XMapWindow(dis,c->win);
+  select_desktop(monitors[i].current_desktop);
 }
 
 void save_monitor(int i) {
   int j;
-
+  
   monitors[i].current_desktop = current_desktop;
   save_desktop(current_desktop);
   for (j = 0; j < 10; j++) {
@@ -334,55 +328,59 @@ int cycle_monitor(int n) {
   
   while (new < 0)
     new += monitors_count;
-
+  
   while (new >= monitors_count)
     new -= monitors_count;
-
+  
   fprintf(stderr, "from %i incremented by %i to %i\n", current_monitor, n, new);
   return new;
 }
 
 void change_monitor(const struct Arg arg) {
   int new;
-
+  client *c;
+  
   if (monitors_count == 1) return;
-
+  
   new = cycle_monitor(arg.i);
   
   save_monitor(current_monitor);
-
-  // Stop the current window in the non focused monitor from showing as focused
+  
+  // Unfocus the current window in the non focused monitora
   current = NULL;
   update_current();
   
   select_monitor(new);
+
+  // Map all windows
+  if(head != NULL)
+    for(c=head;c;c=c->next)
+      XMapWindow(dis,c->win);
   
   tile();
   update_current();
-
+  
   message_wait("Moved to this monitor", 1);
 }
 
-void send_to_monitor(const struct Arg arg) {
+void client_to_monitor(const struct Arg arg) {
   int new = current_monitor + arg.i;
   client *tmp;
   
   if (current == NULL)
     return;
-
+  
   new = cycle_monitor(arg.i);
   
   tmp = current;
   
-  //  XUnmapWindow(dis, current->win);
   remove_window(tmp->win);
-
+  
   save_monitor(current_monitor);
   
   // Add client to desktop
   select_monitor(new);
   add_window(tmp->win, tmp->floating);
-  //  XMapWindow(dis, current->win);
   
   tile();
   update_current();
@@ -393,11 +391,11 @@ void add_window(Window w, int floating) {
   
   if(!(c = (client *)calloc(1,sizeof(client))))
     die("Error calloc!");
-
+  
   c->next = NULL;
   c->win = w;
   c->floating = floating;
-
+  
   if(head == NULL) {
     c->prev = NULL;
     head = c;
@@ -410,7 +408,7 @@ void add_window(Window w, int floating) {
   }
   
   current = c;
-
+  
   grabbuttons(c);
 }
 
@@ -438,7 +436,7 @@ void change_desktop(const struct Arg arg) {
   
   tile();
   update_current();
-
+  
   char buf[10];
   sprintf(buf, "%i", arg.i);
   message_wait(buf, 1);
@@ -450,7 +448,7 @@ void client_to_desktop(const struct Arg arg) {
   
   if(arg.i == current_desktop || current == NULL)
     return;
-
+  
   XUnmapWindow(dis, current->win);
   remove_window(current->win);
   save_desktop(tmp2);
@@ -459,9 +457,9 @@ void client_to_desktop(const struct Arg arg) {
   select_desktop(arg.i);
   add_window(tmp->win, tmp->floating);
   save_desktop(arg.i);
-
+  
   select_desktop(tmp2);
-
+  
   tile();
   update_current();
 }
@@ -484,6 +482,13 @@ void configurerequest(XEvent *e) {
   XConfigureWindow(dis, ev->window, ev->value_mask, &wc);
 }
 
+void increase() {
+  if(master_size < sw-50) {
+    master_size += 10;
+    tile();
+  }
+}
+
 void decrease() {
   if(master_size > 50) {
     master_size -= 10;
@@ -492,21 +497,10 @@ void decrease() {
 }
 
 void destroynotify(XEvent *e) {
-  int i;
-  client *c;
   XDestroyWindowEvent *ev = &e->xdestroywindow;
 
-  // Uber (and ugly) hack ;)
-  for(c=head;c;c=c->next)
-    if(ev->window == c->win)
-      i++;
-  
-  // End of the hack
-  if(i == 0)
-    return;
-
   remove_window(ev->window);
-
+  
   tile();
   update_current();
 }
@@ -529,7 +523,7 @@ unsigned long getcolor(const char* color) {
 void grabkeys() {
   int i;
   KeyCode code;
-
+  
   for (i = 0; keys[i].function != NULL; i++) {
     if((code = XKeysymToKeycode(dis,keys[i].keysym))) {
       XGrabKey(dis,code,keys[i].mod,root,True,GrabModeAsync,GrabModeAsync);
@@ -537,18 +531,11 @@ void grabkeys() {
   }
 }
 
-void increase() {
-  if(master_size < sw-50) {
-    master_size += 10;
-    tile();
-  }
-}
-
 void keypress(XEvent *e) {
   int i;
   XKeyEvent ke = e->xkey;
   KeySym keysym = XLookupKeysym(&ke, 0);
-
+  
   for (i = 0; keys[i].function != NULL; i++) {
     if(keys[i].keysym == keysym && keys[i].mod == ke.state) {
       keys[i].function(keys[i].arg);
@@ -560,14 +547,14 @@ void send_kill_signal(Window w) {
   int n, i;
   XEvent ke;
   Atom *protocols;
-  
+
   if (XGetWMProtocols(dis, w, &protocols, &n) != 0) {
     for (i = n; i >= 0; i--) {
       ke.type = ClientMessage;
       ke.xclient.window = w;
-      ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", False);
+      ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
       ke.xclient.format = 32;
-      ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", False);
+      ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
       ke.xclient.data.l[1] = CurrentTime;
       XSendEvent(dis, w, False, NoEventMask, &ke);
     }
@@ -577,7 +564,10 @@ void send_kill_signal(Window w) {
 /*
   I feel as though there could be a reason for having the same funtion call twice in as row
   as I cannot see any difference between the send_kill_signal and the code below.
- */
+
+  I don't think that remove_window should not be here but it stops chromium and some other
+  programs from crashing X when they're closed with kill_client.
+*/
 void kill_client() {
   if(current == NULL) return;
   send_kill_signal(current->win);
@@ -704,10 +694,36 @@ void quit() {
 }
 
 void remove_window(Window w) {
+  int m, d, monitor_save, desktop_save;
+  
+  monitor_save = current_monitor;
+  save_monitor(current_monitor);
+  
+  for (m = 0; m < monitors_count; m++) {
+    select_monitor(m);
+    
+    desktop_save = current_desktop;
+    
+    for (d = 0; d < 10; d++) {
+      select_desktop(d);
+      
+      remove_window_current(w);
+      
+      save_desktop(d);
+    }
+    
+    select_desktop(desktop_save);
+    save_monitor(m);
+  }
+  
+  select_monitor(monitor_save);
+}
+
+int remove_window_current(Window w) {
   client **tc;
   
   for(tc = &head; *tc && (*tc)->win != w; tc = &(*tc)->next);
-  if (*tc == NULL) return;
+  if (*tc == NULL) return 0;
   
   if ((*tc)->prev == NULL && (*tc)->next == NULL) {
     head = NULL;
@@ -727,6 +743,8 @@ void remove_window(Window w) {
     current = (*tc)->next;
     (*tc)->prev->next = (*tc)->next;
   }
+  
+  return 1;
 }
 
 void save_desktop(int i) {
@@ -798,22 +816,22 @@ void tile() {
   client *c;
   int n = 0;
   int y = bs / 2;
-
+  
   if(head != NULL) {
     for(c=head;c;c=c->next) {
       c->bw = 1;
       if (!c->floating) n++;
     }
-
+    
     if (n > 1 && mode == TILE) {
       n--;
-
+      
       for(c=head;c;c=c->next) {
 	if (c->floating) continue;
 	XMoveResizeWindow(dis,c->win, sx + bs, sy + bs, master_size - 2 - bs * 2, sh - 2 - bs * 2);
 	break;
       }
-
+      
       for(c=c->next;c;c=c->next) {
 	if (c->floating) continue;
 	XMoveResizeWindow(dis, c->win,
@@ -852,10 +870,10 @@ void update_current() {
 
 void message_full(char* args[]) {
   if (messagecmd == NULL) return;
-
+  
   int n, i;
   for (n = 0; args[n]; n++);
-
+  
   char* command[n + 4];
   command[0] = messagecmd;
   command[1] = malloc(sizeof(char) * 10);
@@ -874,21 +892,21 @@ void message_full(char* args[]) {
 
 void message(char *message) {
   char* command[] = {NULL, NULL, NULL};
-
+  
   command[0] = malloc(sizeof(char) * 1024);
   sprintf(command[0], "%s", message);
-
+  
   message_full(command);
 }
 
 void message_wait(char *message, int t) {
   char* command[] = {NULL, "-t", NULL, "-w", NULL};
-
+  
   command[0] = malloc(sizeof(char) * 1024);
   sprintf(command[0], "%s", message);
   command[2] = malloc(sizeof(char) * 5);
   sprintf(command[2], "%i", t);
-
+  
   message_full(command);
 }
 
@@ -911,10 +929,10 @@ void submap(struct Arg arg) {
   XEvent e;
   XKeyEvent ke;
   KeySym keysym;
-
+  
   if (!grabkeyboard())
     return;
-
+  
   for (i = 0; i < 1000; i++) {
     XNextEvent(dis, &e);
     if (e.type == KeyPress) {
@@ -925,21 +943,21 @@ void submap(struct Arg arg) {
 	goto gotkey;
     }
   }
-
+  
   message("No key found in 1000 events... Umm");
   goto end;
-
+  
  gotkey:
-
+  
   for (i = 0; arg.map[i].function != NULL; i++) {
     if(arg.map[i].keysym == keysym && arg.map[i].mod == ke.state) {
       arg.map[i].function(arg.map[i].arg);
       goto end;
     }
   }
-
+  
   message("No key shortcut maped to that key");
-
+  
  end:
   releasekeyboard();
 }
@@ -949,24 +967,24 @@ void stickysubmap(struct Arg arg) {
   XEvent e;
   XKeyEvent ke;
   KeySym keysym;
-
+  
   if (!grabkeyboard())
     return;
-
+  
   message_wait("Sticky submap entered", 2);
   while (1) {
     XNextEvent(dis, &e);
-
+    
     if (e.type == KeyPress) {
       ke = e.xkey;
       keysym = XLookupKeysym(&ke, 0);
-
+      
       if (keyismod(keysym))
 	continue;
-
+      
       if (keysym == XK_Escape)
 	break;
-
+      
       if (keysym == XK_g && ke.state == ControlMask)
 	break;
       
@@ -997,9 +1015,9 @@ int keyismod(KeySym keysym) {
 
 void togglefloat(struct Arg arg) {
   if (!current) return;
-
+  
   current->floating = !current->floating;
-
+  
   if (current->floating) {
     XMoveResizeWindow(dis, current->win,
 		      sx + sw / 3, sy + sh / 3,
@@ -1012,59 +1030,59 @@ void togglefloat(struct Arg arg) {
 }
 
 void mousemotion(struct Arg arg) {
-    XWindowAttributes wa;
-    XEvent ev;
-
-    if (!current || !current->floating || !XGetWindowAttributes(dis, current->win, &wa)) return;
-
-    if (arg.i == RESIZE) XWarpPointer(dis, current->win, current->win, 0, 0, 0, 0, --wa.width, --wa.height);
-    int rx, ry, c, xw, yh; unsigned int v; Window w;
-    if (!XQueryPointer(dis, root, &w, &w, &rx, &ry, &c, &c, &v) || w != current->win) return;
-
-    if (XGrabPointer(dis, root, False, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync,
-                     GrabModeAsync, None, None, CurrentTime) != GrabSuccess) return;
-
-    if (!current->floating) {
-      current->floating = 1;
-      tile();
-      update_current();
-    }
-
-    do {
-      XMaskEvent(dis, ButtonPressMask|ButtonReleaseMask|PointerMotionMask|SubstructureRedirectMask, &ev);
-
-      if (ev.type == MotionNotify) {
-	
-	xw = (arg.i == MOVE ? wa.x:wa.width)  + ev.xmotion.x - rx;
-	yh = (arg.i == MOVE ? wa.y:wa.height) + ev.xmotion.y - ry;
-
-	if (arg.i == RESIZE)
-	  XResizeWindow(dis, current->win,
-			xw > MINWSZ ? xw:MINWSZ, yh > MINWSZ ? yh:MINWSZ);
-	
-	else if (arg.i == MOVE)
-	  XMoveWindow(dis, current->win, xw, yh);
-	
-      } else if (ev.type == ConfigureRequest || ev.type == MapRequest)
-	events[ev.type](&ev);
+  XWindowAttributes wa;
+  XEvent ev;
+  
+  if (!current || !current->floating || !XGetWindowAttributes(dis, current->win, &wa)) return;
+  
+  if (arg.i == RESIZE) XWarpPointer(dis, current->win, current->win, 0, 0, 0, 0, --wa.width, --wa.height);
+  int rx, ry, c, xw, yh; unsigned int v; Window w;
+  if (!XQueryPointer(dis, root, &w, &w, &rx, &ry, &c, &c, &v) || w != current->win) return;
+  
+  if (XGrabPointer(dis, root, False, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync,
+		   GrabModeAsync, None, None, CurrentTime) != GrabSuccess) return;
+  
+  if (!current->floating) {
+    current->floating = 1;
+    tile();
+    update_current();
+  }
+  
+  do {
+    XMaskEvent(dis, ButtonPressMask|ButtonReleaseMask|PointerMotionMask|SubstructureRedirectMask, &ev);
+    
+    if (ev.type == MotionNotify) {
       
-    } while (ev.type != ButtonRelease);
-
-    XUngrabPointer(dis, CurrentTime);
+      xw = (arg.i == MOVE ? wa.x:wa.width)  + ev.xmotion.x - rx;
+      yh = (arg.i == MOVE ? wa.y:wa.height) + ev.xmotion.y - ry;
+      
+      if (arg.i == RESIZE)
+	XResizeWindow(dis, current->win,
+		      xw > MINWSZ ? xw:MINWSZ, yh > MINWSZ ? yh:MINWSZ);
+      
+      else if (arg.i == MOVE)
+	XMoveWindow(dis, current->win, xw, yh);
+      
+    } else if (ev.type == ConfigureRequest || ev.type == MapRequest)
+      events[ev.type](&ev);
+    
+  } while (ev.type != ButtonRelease);
+  
+  XUngrabPointer(dis, CurrentTime);
 }
 
 void grabbuttons(client *c) {
   unsigned int b;
-
+  
   for (b = 0; b < TABLENGTH(buttons); b++) {
     XGrabButton(dis, buttons[b].button, buttons[b].mask, c->win,
-		False, ButtonPressMask|ButtonReleaseMask, GrabModeAsync, GrabModeAsync, None, None);
+ 		False, ButtonPressMask|ButtonReleaseMask, GrabModeAsync, GrabModeAsync, None, None);
   }
 }
 
 void buttonpress(XEvent *e) {
   unsigned int i;
-
+  
   for (i = 0; i < TABLENGTH(buttons); i++)
     if (buttons[i].mask == e->xbutton.state &&
 	buttons[i].function && buttons[i].button == e->xbutton.button) {

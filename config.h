@@ -85,8 +85,8 @@ static struct key rootmap[] = {
   { 0,               XK_comma,  change_monitor,  {.i = 1}},
   { 0,               XK_period, change_monitor,  {.i = -1}},
 
-  { ShiftMask,       XK_comma,  send_to_monitor,  {.i = 1}},
-  { ShiftMask,       XK_period, send_to_monitor,  {.i = -1}},
+  { ShiftMask,       XK_comma,  client_to_monitor,{.i = 1}},
+  { ShiftMask,       XK_period, client_to_monitor,{.i = -1}},
   
   { MOD,             XK_q,      quit,            {NULL}},
   END
@@ -94,8 +94,7 @@ static struct key rootmap[] = {
 
 // Shortcuts
 static struct key keys[] = {
-  // MOD              KEY                         FUNCTION        ARGS
-  { MOD,           XK_p,        submap,         {.map = rootmap}},
+  { MOD,           XK_p,        submap,  {.map = rootmap}},
   DESKTOPCHANGE(   XK_1,        0)
   DESKTOPCHANGE(   XK_2,        1)
   DESKTOPCHANGE(   XK_3,        2)
