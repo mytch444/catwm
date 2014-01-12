@@ -135,6 +135,7 @@ static void tile();
 static void update_current();
 static int grabkeyboard();
 static void releasekeyboard();
+static void message_full(char* args[]);
 static void message(char *message);
 static void message_wait(char *message, int t);
 static void submap(struct Arg arg);
@@ -350,10 +351,16 @@ void change_monitor(const struct Arg arg) {
   
   save_monitor(current_monitor);
 
+  // Stop the current window in the non focused monitor from showing as focused
+  current = NULL;
+  update_current();
+  
   select_monitor(new);
   
   tile();
   update_current();
+
+  message_wait("Moved to this monitor", 1);
 }
 
 void send_to_monitor(const struct Arg arg) {
@@ -843,26 +850,46 @@ void update_current() {
   }
 }
 
-void message(char *message) {
-  char* command[] = {"showmessage", NULL, NULL};
+void message_full(char* args[]) {
+  if (messagecmd == NULL) return;
 
-  command[1] = message;
+  int n, i;
+  for (n = 0; args[n]; n++);
 
+  char* command[n + 4];
+  command[0] = messagecmd;
+  command[1] = malloc(sizeof(char) * 10);
+  sprintf(command[1], "-x");
+  command[2] = malloc(sizeof(char) * 10);
+  sprintf(command[2], "%i", sx + sw - 20);
+  
+  for (i = 0; i < n; ++i) {
+    command[i + 3] = args[i];
+  }
+  
   struct Arg arg;
   arg.com = command;
   spawn(arg);
 }
 
+void message(char *message) {
+  char* command[] = {NULL, NULL, NULL};
+
+  command[0] = malloc(sizeof(char) * 1024);
+  sprintf(command[0], "%s", message);
+
+  message_full(command);
+}
+
 void message_wait(char *message, int t) {
-  char* command[] = {"showmessage", NULL, "-w", "-t", NULL, NULL};
+  char* command[] = {NULL, "-t", NULL, "-w", NULL};
 
-  command[1] = message;
-  command[4] = malloc(sizeof(char) * 5);
-  sprintf(command[4], "%i", t);
+  command[0] = malloc(sizeof(char) * 1024);
+  sprintf(command[0], "%s", message);
+  command[2] = malloc(sizeof(char) * 5);
+  sprintf(command[2], "%i", t);
 
-  struct Arg arg;
-  arg.com = command;
-  spawn(arg);
+  message_full(command);
 }
 
 int grabkeyboard() {

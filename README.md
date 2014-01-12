@@ -56,11 +56,13 @@ Need Xlib and <https://github.com/mytch444/showmessage>, then:
 
 Bugs
 ----
+ * make doesn't recompile when config.h is changed. No major but annoying.
  * None that I have found. At least not bad enough for me to remember.
 
 Todo
 ----
- * Switch to XCB // umm
-
+ * Find a new name?
+ * Add another tiling mode that works more like emacs. I like emacs.
+ 
 If you have some particular request, just send me an e-mail, and I will see for it!
 

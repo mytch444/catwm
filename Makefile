@@ -1,6 +1,6 @@
 CFLAGS+= -Wall
-LDADD+= -lX11 
-LDFLAGS=-lXinerama
+LDADD+= -lX11 -lXinerama
+LDFLAGS=
 EXEC=catwm
 
 PREFIX?= /usr
@@ -10,6 +10,7 @@ CC=gcc
 
 all: $(EXEC)
 
+#catwm: catwm.o
 catwm: catwm.o
 	$(CC) $(LDFLAGS) -Os -o $@ $+ $(LDADD)
 
