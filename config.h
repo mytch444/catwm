@@ -36,12 +36,12 @@
 #define MOD             Mod1Mask
 #define MASTER_SIZE     0.5
 #define BORDER_SPACE    0
+// Set to 0 to disable messages.
+#define MESSAGES        1
 
 // Colors
 #define FOCUS           "rgb:88/88/88"
 #define UNFOCUS         "rgb:33/33/33"
-
-char *messagecmd = "showmessage"; // Set to null to disable messages.
 
 char* dmenucmd[]  = {"dmenu_run", NULL};
 char* termcmd[]   = {"st", NULL};

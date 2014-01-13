@@ -122,7 +122,7 @@ static void next_win();
 static void prev_win();
 static void quit();
 static void remove_window(Window w);
-static int remove_window_current(Window w);
+static int remove_window_from_current(Window w);
 static void save_desktop(int i);
 static void select_desktop(int i);
 static void send_kill_signal(Window w);
@@ -136,7 +136,7 @@ static void tile();
 static void update_current();
 static int grabkeyboard();
 static void releasekeyboard();
-static void message_full(char* args[]);
+static void message_full(char* args[], int argc);
 static void message(char *message);
 static void message_wait(char *message, int t);
 static void submap(struct Arg arg);
@@ -144,7 +144,8 @@ static void stickysubmap(struct Arg arg);
 static int keyismod(KeySym keysym);
 static void togglefloat(struct Arg arg);
 static void mousemotion(struct Arg arg);
-static void grabbuttons(struct client *c);
+static void grabbuttons(Window w);
+static void ungrabbuttons(Window w);
 static void buttonpress(XEvent *e);
 static void update_monitors();
 static void select_monitor(int i);
@@ -153,6 +154,7 @@ static void client_to_monitor(struct Arg arg);
 static void init_desktops(monitor *mon);
 static void copy_desktop(desktop *new, desktop old);
 static int cycle_monitor(int n);
+static void save_monitor(int i);
 
 // Include configuration file (need struct key)
 #include "config.h"
@@ -167,17 +169,17 @@ static int bs;
 static unsigned int win_focus;
 static unsigned int win_unfocus;
 
-static int current_monitor;
-static monitor *monitors;
 static int monitors_count;
+static int current_monitor;
+static int current_desktop;
+
+static monitor *monitors;
+static desktop desktops[10];
 
 static int sh;
 static int sw;
 static int sx;
 static int sy;
-
-static desktop desktops[10];
-static int current_desktop;
 static int master_size;
 static int mode;
 static client *head;
@@ -196,20 +198,19 @@ static void (*events[LASTEvent])(XEvent *e) = {
 void setup() {
   // Install a signal
   sigchld(0);
-  
-  monitors_count = 0;
-  current_monitor = 0;
-  
+    
   bool_quit = 0;
   mode = 0;
   head = NULL;
   current = NULL;
   bs = BORDER_SPACE;
-  
+  monitors_count = 0;
+  current_monitor = 0;
+
   // Screen and root window
   screen = DefaultScreen(dis);
   root = RootWindow(dis,screen);
-  
+
   update_monitors();
   select_monitor(0);
   
@@ -224,7 +225,8 @@ void setup() {
 }
 
 void update_monitors() {
-  int i;
+  int i, m, d;
+  client *c;
   
   if (XineramaIsActive(dis)) {
     int count = 0;
@@ -233,48 +235,57 @@ void update_monitors() {
     if (!(info = XineramaQueryScreens(dis, &count)))
       die("Error xineramaQueryScreens!");
     
-    if (count == monitors_count) {
-      for (i = 0; i < count; ++i) {
-	monitors[i].sw = info[i].width;
-	monitors[i].sh = info[i].height;
-	monitors[i].x = info[i].x_org;
-	monitors[i].y = info[i].y_org;
-	monitors[i].current_desktop = 0;
-      }
-    } else if (count > monitors_count) {
+    if (count > monitors_count) {
       if (!(monitors = (monitor*) realloc(monitors, count * sizeof(monitor))))
 	die("Error realloc!");
-      
-      for (i = count - (count - monitors_count); i < count; ++i) {
+
+      for (i = monitors_count; i < count; ++i) {
+	monitors[i].current_desktop = 0;
 	monitors[i].sw = info[i].width;
 	monitors[i].sh = info[i].height;
 	monitors[i].x = info[i].x_org;
 	monitors[i].y = info[i].y_org;
-	monitors[i].current_desktop = 0;
+	init_desktops(&monitors[i]);
       }
     } else if (count < monitors_count) {
+      if (count < 1)
+	die("A monitor could help");
+
+      select_monitor(0);
+      for (m = 1; m < monitors_count; m++) {
+	for (d = 0; d < 10; d++) {
+	  for (c = monitors[m].desktops[d].head; c; c = c->next) {
+	    remove_window(c->win);
+	    add_window(c->win, c->floating);
+	  }
+	}
+      }
+      save_monitor(0);
+      
       if (!(monitors = (monitor*)realloc(monitors, count * sizeof(monitor))))
 	die("Error realloc!");
+    }
+
+    for (i = 0; i < count; ++i) {
+      monitors[i].sw = info[i].width;
+      monitors[i].sh = info[i].height;
+      monitors[i].x = info[i].x_org;
+      monitors[i].y = info[i].y_org;
     }
     
     monitors_count = count;
     XFree(info);
-  }
-  
-  if (!monitors) {
-    if (!(monitors = (monitor*) realloc(monitors, sizeof(monitor))))
-      die("Error realloc!");
-    
+  } else {
     monitors_count = 1;
-    monitors[0].sw = XDisplayWidth(dis,screen);
-    monitors[0].sh = XDisplayHeight(dis,screen);
+    if (!(monitors = (monitor*)realloc(monitors, sizeof(monitor))))
+      die("Error realloc!");
+       
+    monitors[0].current_desktop = 0;
+    monitors[0].sw = XDisplayWidth(dis, screen);
+    monitors[0].sh = XDisplayHeight(dis, screen);
     monitors[0].x = 0;
     monitors[0].y = 0;
-    monitors[0].current_desktop = 0;
-  }
-  
-  for (i = 0; i < monitors_count; i++) {
-    init_desktops(&monitors[i]);
+    init_desktops(&monitors[0]);
   }
 }
 
@@ -282,7 +293,7 @@ void init_desktops(monitor *mon) {
   int i;
   for (i = 0; i < 10; i++) {
     mon->desktops[i].master_size = mon->sw * MASTER_SIZE;
-    mon->desktops[i].mode = mode;
+    mon->desktops[i].mode = TILE;
     mon->desktops[i].head = NULL;
     mon->desktops[i].current = NULL;
   }
@@ -299,7 +310,6 @@ void select_monitor(int i) {
   sy = monitors[i].y;
   
   for (j = 0; j < 10; j++) {
-    desktops[j] = monitors[i].desktops[j];
     copy_desktop(&desktops[j], monitors[i].desktops[j]);
   }
   
@@ -328,11 +338,9 @@ int cycle_monitor(int n) {
   
   while (new < 0)
     new += monitors_count;
-  
   while (new >= monitors_count)
     new -= monitors_count;
-  
-  fprintf(stderr, "from %i incremented by %i to %i\n", current_monitor, n, new);
+
   return new;
 }
 
@@ -399,8 +407,7 @@ void add_window(Window w, int floating) {
   if(head == NULL) {
     c->prev = NULL;
     head = c;
-  }
-  else {
+  } else {
     for(t=head;t->next;t=t->next);
     
     c->prev = t;
@@ -408,8 +415,6 @@ void add_window(Window w, int floating) {
   }
   
   current = c;
-  
-  grabbuttons(c);
 }
 
 void change_desktop(const struct Arg arg) {
@@ -417,15 +422,15 @@ void change_desktop(const struct Arg arg) {
   
   if(arg.i == current_desktop)
     return;
+
+  // Save current "properties"
+  save_desktop(current_desktop);
   
   // Unmap all window
   if(head != NULL)
     for(c=head;c;c=c->next)
       XUnmapWindow(dis,c->win);
-  
-  // Save current "properties"
-  save_desktop(current_desktop);
-  
+    
   // Take "properties" from the new desktop
   select_desktop(arg.i);
   
@@ -464,12 +469,19 @@ void client_to_desktop(const struct Arg arg) {
   update_current();
 }
 
+/*
+  If anyone could get this working that would be great. As it is, it's unimportant.
+ */
 void configurenotify(XEvent *e) {
-  // Do nothing for the moment
+  /*  XConfigureEvent *ev = &e->xconfigure;
+
+  if (ev->window == root) {
+    update_monitors();
+    }*/
 }
 
 void configurerequest(XEvent *e) {
-  // Paste from DWM, thx again \o/
+  /*  // Paste from DWM, thx again \o/
   XConfigureRequestEvent *ev = &e->xconfigurerequest;
   XWindowChanges wc;
   wc.x = ev->x;
@@ -479,7 +491,7 @@ void configurerequest(XEvent *e) {
   wc.border_width = ev->border_width;
   wc.sibling = ev->above;
   wc.stack_mode = ev->detail;
-  XConfigureWindow(dis, ev->window, ev->value_mask, &wc);
+  XConfigureWindow(dis, ev->window, ev->value_mask, &wc);*/
 }
 
 void increase() {
@@ -497,11 +509,19 @@ void decrease() {
 }
 
 void destroynotify(XEvent *e) {
+  int i = 0;
+  client *c;
   XDestroyWindowEvent *ev = &e->xdestroywindow;
 
-  remove_window(ev->window);
+  for (c = head; c; c = c->next)
+    if (ev->window == c->win)
+      i++;
+
+  if (i == 0)
+    return;
   
-  tile();
+  remove_window(ev->window);
+
   update_current();
 }
 
@@ -552,9 +572,9 @@ void send_kill_signal(Window w) {
     for (i = n; i >= 0; i--) {
       ke.type = ClientMessage;
       ke.xclient.window = w;
-      ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", True);
+      ke.xclient.message_type = XInternAtom(dis, "WM_PROTOCOLS", False);
       ke.xclient.format = 32;
-      ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", True);
+      ke.xclient.data.l[0] = XInternAtom(dis, "WM_DELETE_WINDOW", False);
       ke.xclient.data.l[1] = CurrentTime;
       XSendEvent(dis, w, False, NoEventMask, &ke);
     }
@@ -565,28 +585,32 @@ void send_kill_signal(Window w) {
   I feel as though there could be a reason for having the same funtion call twice in as row
   as I cannot see any difference between the send_kill_signal and the code below.
 
-  I don't think that remove_window should not be here but it stops chromium and some other
-  programs from crashing X when they're closed with kill_client.
+  remove_window must be here and cannot be in unmapnotify (which also solves the problem of
+  closing chromium crashing X) as if it is in unmapnotify then unmaping the window in change
+  desktop removes it.
 */
 void kill_client() {
-  if(current == NULL) return;
-  send_kill_signal(current->win);
-  remove_window(current->win);
+  if(current) {
+    send_kill_signal(current->win);
+    remove_window(current->win);
+  }
 }
 
 void maprequest(XEvent *e) {
   XMapRequestEvent *ev = &e->xmaprequest;
-  
+
   // For fullscreen mplayer (and maybe some other program)
   client *c;
-  for(c=head;c;c=c->next)
+  for(c=head;c;c=c->next) {
     if(ev->window == c->win) {
       XMapWindow(dis,ev->window);
       return;
     }
+  }
   
   add_window(ev->window, 0);
   XMapWindow(dis,ev->window);
+  
   tile();
   update_current();
 }
@@ -695,7 +719,7 @@ void quit() {
 
 void remove_window(Window w) {
   int m, d, monitor_save, desktop_save;
-  
+
   monitor_save = current_monitor;
   save_monitor(current_monitor);
   
@@ -707,7 +731,10 @@ void remove_window(Window w) {
     for (d = 0; d < 10; d++) {
       select_desktop(d);
       
-      remove_window_current(w);
+      if (remove_window_from_current(w)) {
+	tile();
+	update_current();
+      }
       
       save_desktop(d);
     }
@@ -715,36 +742,47 @@ void remove_window(Window w) {
     select_desktop(desktop_save);
     save_monitor(m);
   }
-  
+
   select_monitor(monitor_save);
 }
 
-int remove_window_current(Window w) {
-  client **tc;
+/*
+  Going back to old code (not sure why I changed in the first place)
+  as it works. Fixed bug where closing windows with there own close
+  button would crash wm.
+ */
+int remove_window_from_current(Window w) {
+  client *c;
+  for (c = head; c; c = c->next) {
+    if (c->win == w) {
+      if (c->prev == NULL && c->next == NULL) {
+	free(head);
+	head = NULL;
+	current = NULL;
+	return 1;
+      }
+
+      if (c->prev == NULL) {
+	head = c->next;
+	c->next->prev = NULL;
+	current = c->next;
+      }
+      else if (c->next == NULL) {
+	c->prev->next = NULL;
+	current = c->prev;
+      }
+      else {
+	c->next->prev = c->prev;
+	c->prev->next = c->next;
+	current = c->next;
+      }
+
+      free(c);
+      return 1;
+    }
+  }
   
-  for(tc = &head; *tc && (*tc)->win != w; tc = &(*tc)->next);
-  if (*tc == NULL) return 0;
-  
-  if ((*tc)->prev == NULL && (*tc)->next == NULL) {
-    head = NULL;
-    current = NULL;
-  }
-  else if ((*tc)->prev == NULL) {
-    (*tc)->next->prev = NULL;
-    head = (*tc)->next;
-    current = head;
-  }
-  else if ((*tc)->next == NULL) {
-    current = (*tc)->prev;
-    (*tc)->prev->next = NULL;
-  }
-  else {
-    (*tc)->next->prev = (*tc)->prev;
-    current = (*tc)->next;
-    (*tc)->prev->next = (*tc)->next;
-  }
-  
-  return 1;
+  return 0;
 }
 
 void save_desktop(int i) {
@@ -868,22 +906,22 @@ void update_current() {
   }
 }
 
-void message_full(char* args[]) {
-  if (messagecmd == NULL) return;
+void message_full(char* args[], int argc) {
+  if (!MESSAGES) return;
   
-  int n, i;
-  for (n = 0; args[n]; n++);
+  int i;
   
-  char* command[n + 4];
-  command[0] = messagecmd;
-  command[1] = malloc(sizeof(char) * 10);
-  sprintf(command[1], "-x");
+  char* command[argc + 4];
+  command[0] = "showmessage";
+  command[1] = "-x";
   command[2] = malloc(sizeof(char) * 10);
   sprintf(command[2], "%i", sx + sw - 20);
   
-  for (i = 0; i < n; ++i) {
+  for (i = 0; args[i]; i++) {
     command[i + 3] = args[i];
   }
+
+  command[argc + 3] = NULL;
   
   struct Arg arg;
   arg.com = command;
@@ -891,23 +929,21 @@ void message_full(char* args[]) {
 }
 
 void message(char *message) {
-  char* command[] = {NULL, NULL, NULL};
+  char* command[] = {NULL};
+
+  command[0] = message;
   
-  command[0] = malloc(sizeof(char) * 1024);
-  sprintf(command[0], "%s", message);
-  
-  message_full(command);
+  message_full(command, 1);
 }
 
 void message_wait(char *message, int t) {
-  char* command[] = {NULL, "-t", NULL, "-w", NULL};
-  
-  command[0] = malloc(sizeof(char) * 1024);
-  sprintf(command[0], "%s", message);
+  char* command[] = {NULL, "-t", NULL, "-w"};
+
+  command[0] = message;
   command[2] = malloc(sizeof(char) * 5);
   sprintf(command[2], "%i", t);
   
-  message_full(command);
+  message_full(command, 4);
 }
 
 int grabkeyboard() {
@@ -1023,6 +1059,9 @@ void togglefloat(struct Arg arg) {
 		      sx + sw / 3, sy + sh / 3,
 		      sw / 3, sh / 3);
     XRaiseWindow(dis,current->win);
+    grabbuttons(current->win);
+  } else {
+    ungrabbuttons(current->win);
   }
   
   tile();
@@ -1033,7 +1072,7 @@ void mousemotion(struct Arg arg) {
   XWindowAttributes wa;
   XEvent ev;
   
-  if (!current || !current->floating || !XGetWindowAttributes(dis, current->win, &wa)) return;
+  if (!current || !XGetWindowAttributes(dis, current->win, &wa)) return;
   
   if (arg.i == RESIZE) XWarpPointer(dis, current->win, current->win, 0, 0, 0, 0, --wa.width, --wa.height);
   int rx, ry, c, xw, yh; unsigned int v; Window w;
@@ -1041,12 +1080,6 @@ void mousemotion(struct Arg arg) {
   
   if (XGrabPointer(dis, root, False, ButtonPressMask|ButtonReleaseMask|PointerMotionMask, GrabModeAsync,
 		   GrabModeAsync, None, None, CurrentTime) != GrabSuccess) return;
-  
-  if (!current->floating) {
-    current->floating = 1;
-    tile();
-    update_current();
-  }
   
   do {
     XMaskEvent(dis, ButtonPressMask|ButtonReleaseMask|PointerMotionMask|SubstructureRedirectMask, &ev);
@@ -1063,7 +1096,7 @@ void mousemotion(struct Arg arg) {
       else if (arg.i == MOVE)
 	XMoveWindow(dis, current->win, xw, yh);
       
-    } else if (ev.type == ConfigureRequest || ev.type == MapRequest)
+    } else //if (ev.type == ConfigureRequest || ev.type == MapRequest)
       events[ev.type](&ev);
     
   } while (ev.type != ButtonRelease);
@@ -1071,13 +1104,17 @@ void mousemotion(struct Arg arg) {
   XUngrabPointer(dis, CurrentTime);
 }
 
-void grabbuttons(client *c) {
-  unsigned int b;
-  
-  for (b = 0; b < TABLENGTH(buttons); b++) {
-    XGrabButton(dis, buttons[b].button, buttons[b].mask, c->win,
+void grabbuttons(Window w) {
+  int b;
+  for (b = 0; b < TABLENGTH(buttons); b++)
+    XGrabButton(dis, buttons[b].button, buttons[b].mask, w,
  		False, ButtonPressMask|ButtonReleaseMask, GrabModeAsync, GrabModeAsync, None, None);
-  }
+}
+
+void ungrabbuttons(Window w) {
+  int b;
+  for (b = 0; b < TABLENGTH(buttons); b++)
+    XUngrabButton(dis, buttons[b].button, buttons[b].mask, w);
 }
 
 void buttonpress(XEvent *e) {
@@ -1106,4 +1143,3 @@ int main(int argc, char **argv) {
   
   return 0;
 }
-
