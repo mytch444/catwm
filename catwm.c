@@ -994,7 +994,7 @@ void submap(struct Arg arg) {
   
   message("No key shortcut maped to that key");
   
-p end:
+ end:
   releasekeyboard();
 }
 
