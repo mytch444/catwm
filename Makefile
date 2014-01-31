@@ -1,21 +1,21 @@
 CFLAGS+= -Wall
 LDADD+= -lX11 -lXinerama
-LDFLAGS=
 EXEC=catwm
 
-PREFIX?= /usr
-BINDIR?= $(PREFIX)/bin
+BINDIR?= /usr/bin
 
 CC=gcc
 
 all: $(EXEC)
 
-#catwm: catwm.o
-catwm: catwm.o
-	$(CC) $(LDFLAGS) -Os -o $@ $+ $(LDADD)
+$(EXEC): catwm.o
+	$(CC) $(LDADD) catwm.o -o catwm 
+
+catwm.o: catwm.c config.h
+	$(CC) -c catwm.c
 
 install: all
-	install -Dm 755 catwm $(DESTDIR)$(BINDIR)/catwm
+	install -Dm 755 $(EXEC) $(BINDIR)/$(EXEC)
 
 clean:
-	rm -f catwm *.o
+	rm -f $(EXEC) *.o

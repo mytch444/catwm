@@ -18,7 +18,7 @@ and strings of key combinations (C-b o) like emacs.
 Status
 ------
 This fork
-
+ * 29.01.14 -> Removed floating as I have yet to actually use it.
  * 11.01.14 -> Added Xinerama support, floating windows and some other things.
  * 07.01.14 -> Added key strings and border space.
 
@@ -32,8 +32,9 @@ catwm
 Modes
 -----
 
-It allow the "normal" modes of tiling window managers:
-
+The default is the normal mode which has one window as master and the rest to the right
+of it (like below). The with of the master area can be changed and is only for that 
+desktop (so different desktops have different widths).
     --------------
     |        |___|
     |        |___|
@@ -42,26 +43,29 @@ It allow the "normal" modes of tiling window managers:
     |        |___|
     --------------
 
-fullscreen mode and floating.
+and fullscreen mode which has each window taking up the full screen and can be cycled
+through the same way as changing windows on tiling ("C-p o" but default).
 
 Installation
 ------------
 
-Need Xlib and <https://github.com/mytch444/showmessage>, then:
+You will need Xlib and <https://github.com/mytch444/showmessage> (Or disable messages),
+then:
 
-  $ emacs config.h
-  $ make
-  $ make install
-  $ make clean
+    $ emacs config.h # And change to your liking.
+    $ make
+    $ make install
+    $ make clean
 
 Bugs
 ----
- * make doesn't recompile when config.h is changed. No major but annoying.
+ * make doesn't recompile when config.h (or any other file) is changed without cleaning 
+   first. Not major but annoying.
 
 Todo
 ----
- * Find a new name?
+ * Find a new name? So far I have come up with idlcwm (I don't like catwm). Thats about the best.
+   So this could take some time to fix.
  * Add another tiling mode that works more like emacs. I like emacs.
  
 If you have some particular request, just send me an e-mail, and I will see for it!
-
