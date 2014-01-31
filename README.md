@@ -35,6 +35,7 @@ Modes
 The default is the normal mode which has one window as master and the rest to the right
 of it (like below). The with of the master area can be changed and is only for that 
 desktop (so different desktops have different widths).
+
     --------------
     |        |___|
     |        |___|
@@ -52,7 +53,7 @@ Installation
 You will need Xlib and <https://github.com/mytch444/showmessage> (Or disable messages),
 then:
 
-    $ emacs config.h # And change to your liking.
+    $ vim config.h # And change to your liking.
     $ make
     $ make install
     $ make clean
