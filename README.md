@@ -60,8 +60,7 @@ then:
 
 Bugs
 ----
- * make doesn't recompile when config.h (or any other file) is changed without cleaning 
-   first. Not major but annoying.
+ * Some problems when closing some programs that cause it to crash.
 
 Todo
 ----

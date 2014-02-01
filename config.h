@@ -38,7 +38,7 @@
 #define BORDER_SPACE    0
 // Set to 0 to disable messages.
 #define MESSAGES        1
-#define FOLLOW_MOUSE    1
+#define FOLLOW_MOUSE    0
 
 // Colors
 #define FOCUS           "rgb:88/88/88"

@@ -255,6 +255,7 @@ unsigned long getcolor(const char* color) {
 }
 
 void add_window(Window w) {
+    fprintf(stderr, "add_window\n");
     client *c,*t;
 
     if(!(c = (client *)calloc(1,sizeof(client))))
@@ -280,6 +281,7 @@ void add_window(Window w) {
 
 void remove_window(Window w) {
     int m, d, monitor_save, desktop_save;
+    int yes = 0;
 
     monitor_save = current_monitor;
     save_monitor(current_monitor);
@@ -293,9 +295,10 @@ void remove_window(Window w) {
             select_desktop(d);
 
             if (remove_window_from_current(w)) {
+                fprintf(stderr, "Yes I removed a window\n");
                 tile();
                 update_current();
-            }
+            } 
 
             save_desktop(d);
         }
@@ -305,6 +308,9 @@ void remove_window(Window w) {
     }
 
     select_monitor(monitor_save);
+
+    if (!yes)
+        fprintf(stderr, "I did not find a window to remove\n");
 }
 
 /*
@@ -894,6 +900,8 @@ void enternotify(XEvent *e) {
     if (!followmouse)
         return;
 
+    fprintf(stderr, "enternotify\n");
+
     client *c;
     int m, save;
 
@@ -917,6 +925,7 @@ void enternotify(XEvent *e) {
 }
 
 void maprequest(XEvent *e) {
+    fprintf(stderr, "maprequest\n");
     XMapRequestEvent *ev = &e->xmaprequest;
 
     // For fullscreen mplayer (and maybe some other program)
@@ -938,8 +947,8 @@ void maprequest(XEvent *e) {
 void destroynotify(XEvent *e) {
     XDestroyWindowEvent *ev = &e->xdestroywindow;
 
+    fprintf(stderr, "destroying window\n");
     remove_window(ev->window);
-    fprintf(stderr, "destroyed window\n");
 }
 
 /*
@@ -947,15 +956,16 @@ void destroynotify(XEvent *e) {
    By work I mean make it detect when a monitor is added or removed.
    */
 void configurenotify(XEvent *e) {
-    fprintf(stderr, "configurenotify\n");
-    XConfigureEvent *ev = &e->xconfigure;
 
-    if (ev->window == root) {
-        update_monitors();
-    }
 }
 
+/*
+ * Removing XConfigureWindow seems to stop it from crashing when running minecraft
+ * (It was a one time thing I swear!!!) and probebly some other things. I shall see 
+ * if it causes any problems.
+ */
 void configurerequest(XEvent *e) {
+    fprintf(stderr, "configurerequest... wtf\n");
     // Paste from DWM, thx again \o/
     XConfigureRequestEvent *ev = &e->xconfigurerequest;
     XWindowChanges wc;
@@ -966,7 +976,7 @@ void configurerequest(XEvent *e) {
     wc.border_width = ev->border_width;
     wc.sibling = ev->above;
     wc.stack_mode = ev->detail;
-    XConfigureWindow(dis, ev->window, ev->value_mask, &wc);
+//    XConfigureWindow(dis, ev->window, ev->value_mask, &wc);
 }
 
 void keypress(XEvent *e) {
