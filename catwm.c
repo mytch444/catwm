@@ -281,8 +281,7 @@ void add_window(Window w) {
 
 void remove_window(Window w) {
     int m, d, monitor_save, desktop_save;
-    int yes = 0;
-
+    
     monitor_save = current_monitor;
     save_monitor(current_monitor);
 
@@ -295,7 +294,6 @@ void remove_window(Window w) {
             select_desktop(d);
 
             if (remove_window_from_current(w)) {
-                fprintf(stderr, "Yes I removed a window\n");
                 tile();
                 update_current();
             } 
@@ -308,9 +306,6 @@ void remove_window(Window w) {
     }
 
     select_monitor(monitor_save);
-
-    if (!yes)
-        fprintf(stderr, "I did not find a window to remove\n");
 }
 
 /*
@@ -434,28 +429,34 @@ void update_current() {
 void update_monitors() {
     fprintf(stderr, "Updating monitors\n");
     
-    int i, m, d;
+    int i, m, d, count, save;
     client *c;
+    XineramaScreenInfo *info;
 
+    if (monitors_count > current_monitor)
+        save_monitor(current_monitor);
+ 
     if (XineramaIsActive(dis)) {
-        int count = 0;
-        XineramaScreenInfo *info = NULL;
+        fprintf(stderr, "Yea I actually am\n");
 
         if (!(info = XineramaQueryScreens(dis, &count)))
             die("Error xineramaQueryScreens!");
 
         if (count > monitors_count) {
             fprintf(stderr, "Adding monitors\n");
+            
             if (!(monitors = (monitor*) realloc(monitors, count * sizeof(monitor))))
                 die("Error realloc!");
 
-            for (i = monitors_count; i < count; ++i) {
+            for (i = 0; i < count; ++i) {
                 monitors[i].current_desktop = 0;
                 monitors[i].sw = info[i].width;
                 monitors[i].sh = info[i].height;
                 monitors[i].x = info[i].x_org;
                 monitors[i].y = info[i].y_org;
-                init_desktops(&monitors[i]);
+
+                if (i >= monitors_count) // Only init the desktops if this is a new monitor.
+                    init_desktops(&monitors[i]);
             }
         } else if (count < monitors_count) {
             fprintf(stderr, "Removing monitors\n");
@@ -463,7 +464,7 @@ void update_monitors() {
                 die("A monitor could help");
 
             select_monitor(0);
-            for (m = 1; m < monitors_count; m++) {
+            for (m = count - 1; m < monitors_count; m++) {
                 for (d = 0; d < 10; d++) {
                     for (c = monitors[m].desktops[d].head; c; c = c->next) {
                         remove_window(c->win);
@@ -473,24 +474,44 @@ void update_monitors() {
             }
             save_monitor(0);
 
+            if (current_monitor > count)
+                current_monitor = count;
+
             if (!(monitors = (monitor*)realloc(monitors, count * sizeof(monitor))))
                 die("Error realloc!");
         }
 
+        /*
+         * This is for both if the count decreased or if it stayed the same (and increased now for tiling)
+         * so don't move it into the previous thing as I just did.
+         */
+        save = current_monitor;
         for (i = 0; i < count; ++i) {
             monitors[i].sw = info[i].width;
             monitors[i].sh = info[i].height;
             monitors[i].x = info[i].x_org;
             monitors[i].y = info[i].y_org;
+
+            select_monitor(i);
+            tile();
         }
 
+        select_monitor(save);
+     
         monitors_count = count;
         XFree(info);
     } else {
-        monitors_count = 1;
+        fprintf(stderr, "Na, I might not aye\n");
+
         if (!(monitors = (monitor*)realloc(monitors, sizeof(monitor))))
             die("Error realloc!");
 
+        if (monitors_count > 1)
+            return;
+
+        monitors_count = 1;
+        current_monitor = 0;
+        
         monitors[0].current_desktop = 0;
         monitors[0].sw = XDisplayWidth(dis, screen);
         monitors[0].sh = XDisplayHeight(dis, screen);
@@ -947,16 +968,21 @@ void maprequest(XEvent *e) {
 void destroynotify(XEvent *e) {
     XDestroyWindowEvent *ev = &e->xdestroywindow;
 
-    fprintf(stderr, "destroying window\n");
     remove_window(ev->window);
 }
 
 /*
-   If anyone could get this working that would be great. As it is, it's unimportant.
-   By work I mean make it detect when a monitor is added or removed.
-   */
+ * Seems to be working but dwm has it check if its the root window that's changing
+ * which doesn't seem to work for me, if I have that then it doesn't seem to update
+ * the position of the monitors. I'll figure something out, for now this works. 
+ * Kind of.
+ */
 void configurenotify(XEvent *e) {
+    fprintf(stderr, "configurenotify\n");
 
+    XConfigureEvent *ev = &e->xconfigure;
+
+    update_monitors();
 }
 
 /*
